@@ -151,3 +151,4 @@ DEPLOYMENT.md
 .vercel
 dist
 build
+.dockerignore
