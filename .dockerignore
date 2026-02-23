@@ -1,0 +1,47 @@
+# Don’t send these into the Docker build context (faster, smaller image)
+
+# Git & IDE
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+*.md
+!README.md
+
+# Environment (secrets never in image)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv
+.venv
+env
+.eggs
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Frontend (not needed for backend image)
+frontend/
+
+# Audio output (created at runtime in container)
+audio_files/
+*.mp3
+*.wav
+*.ogg
+*.flac
+
+# OS & misc
+.DS_Store
+*.log
+tmp
+temp
+.cache

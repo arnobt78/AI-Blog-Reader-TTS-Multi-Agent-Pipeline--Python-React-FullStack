@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+requests
+beautifulsoup4
+python-multipart
+python-dotenv
+aiofiles
+
+# AI TTS Providers
+openai
+elevenlabs
+replicate
+huggingface_hub
+
+# Free fallback
+edge-tts
