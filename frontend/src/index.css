@@ -1,9 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  
+  /* Loaded via Google Fonts in index.html — display for hero, sans for UI body */
+  --font-sans:
+    "DM Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-display:
+    "Instrument Serif", ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
   --color-background: #ffffff;
   --color-foreground: #0a0a0a;
   --color-card: #ffffff;
@@ -29,6 +36,12 @@
 @layer base {
   * {
     @apply border-border;
+  }
+  /* Smooth scrolling when the OS allows motion (guardrails-friendly). */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
   }
   body {
     @apply bg-background text-foreground;
@@ -56,4 +69,247 @@
   --color-border: #262626;
   --color-input: #262626;
   --color-ring: #d4d4d4;
+}
+
+/* --- Ripple click effect (see docs/RIPPLE_BUTTON_EFFECT.md) --- */
+@keyframes ripple-expand {
+  from {
+    transform: scale(0);
+    opacity: 0.55;
+  }
+  55% {
+    opacity: 0.35;
+  }
+  to {
+    transform: scale(42);
+    opacity: 0;
+  }
+}
+
+.animate-ripple-expand {
+  animation: ripple-expand 0.85s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+/* Reader speed slider: transparent track so a gradient rail shows through */
+input[type="range"].speed-range {
+  @apply relative z-10 h-9 w-full cursor-pointer appearance-none bg-transparent;
+}
+input[type="range"].speed-range:focus {
+  outline: none;
+}
+input[type="range"].speed-range::-webkit-slider-runnable-track {
+  height: 0.625rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+input[type="range"].speed-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: -0.25rem;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid rgb(196 181 253);
+  box-shadow:
+    0 0 0 2px rgba(109, 40, 217, 0.4),
+    0 2px 12px rgba(0, 0, 0, 0.4);
+}
+input[type="range"].speed-range:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 3px rgba(167, 139, 250, 0.65),
+    0 2px 12px rgba(0, 0, 0, 0.4);
+}
+input[type="range"].speed-range::-moz-range-track {
+  height: 0.625rem;
+  border-radius: 9999px;
+  background: transparent;
+}
+input[type="range"].speed-range::-moz-range-thumb {
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 2px solid rgb(196 181 253);
+  border-radius: 9999px;
+  background: #fff;
+  box-shadow:
+    0 0 0 2px rgba(109, 40, 217, 0.4),
+    0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* --- Outer glow surfaces (violet family; see docs/UI_STYLING_GUIDE.md § Shadows) --- */
+.glow-card {
+  transition: box-shadow 0.35s ease;
+  box-shadow:
+    0 24px 70px rgba(139, 92, 246, 0.2),
+    0 0 0 1px rgba(167, 139, 250, 0.12);
+}
+html.dark .glow-card {
+  box-shadow:
+    0 26px 78px rgba(139, 92, 246, 0.32),
+    0 0 0 1px rgba(167, 139, 250, 0.14);
+}
+.glow-card-hover:hover {
+  box-shadow:
+    0 30px 90px rgba(167, 139, 250, 0.34),
+    0 0 0 1px rgba(196, 181, 253, 0.2);
+}
+
+.glow-panel {
+  transition: box-shadow 0.3s ease;
+  box-shadow:
+    0 10px 36px rgba(139, 92, 246, 0.1),
+    0 0 0 1px rgba(139, 92, 246, 0.06);
+}
+html.dark .glow-panel {
+  box-shadow:
+    0 12px 42px rgba(139, 92, 246, 0.18),
+    0 0 0 1px rgba(167, 139, 250, 0.08);
+}
+.glow-panel-hover:hover {
+  box-shadow:
+    0 16px 50px rgba(167, 139, 250, 0.22),
+    0 0 0 1px rgba(196, 181, 253, 0.12);
+}
+
+.glow-dropdown {
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 22px 55px rgba(139, 92, 246, 0.28),
+    0 0 0 1px rgba(167, 139, 250, 0.12);
+}
+html.dark .glow-dropdown {
+  box-shadow:
+    0 24px 60px rgba(139, 92, 246, 0.38),
+    0 0 0 1px rgba(192, 132, 252, 0.14);
+}
+
+.glow-tabs-shell {
+  transition: box-shadow 0.25s ease;
+  box-shadow:
+    0 8px 28px rgba(139, 92, 246, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+html.dark .glow-tabs-shell {
+  box-shadow:
+    0 10px 32px rgba(139, 92, 246, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glow-field {
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+  box-shadow:
+    0 6px 22px rgba(139, 92, 246, 0.1),
+    0 0 0 1px rgba(167, 139, 250, 0.07);
+}
+html.dark .glow-field {
+  box-shadow:
+    0 8px 26px rgba(139, 92, 246, 0.16),
+    0 0 0 1px rgba(167, 139, 250, 0.1);
+}
+.glow-field:hover {
+  box-shadow:
+    0 10px 32px rgba(139, 92, 246, 0.18),
+    0 0 0 1px rgba(167, 139, 250, 0.12);
+}
+html.dark .glow-field:hover {
+  box-shadow:
+    0 12px 36px rgba(167, 139, 250, 0.26),
+    0 0 0 1px rgba(196, 181, 253, 0.14);
+}
+.glow-field:focus-visible {
+  box-shadow:
+    0 12px 36px rgba(139, 92, 246, 0.2),
+    0 0 0 1px rgba(167, 139, 250, 0.14);
+}
+html.dark .glow-field:focus-visible {
+  box-shadow:
+    0 14px 40px rgba(167, 139, 250, 0.28),
+    0 0 0 1px rgba(196, 181, 253, 0.18);
+}
+
+.glow-card-sm {
+  transition: box-shadow 0.3s ease;
+  box-shadow:
+    0 14px 40px rgba(139, 92, 246, 0.14),
+    0 0 0 1px rgba(167, 139, 250, 0.08);
+}
+html.dark .glow-card-sm {
+  box-shadow:
+    0 16px 44px rgba(139, 92, 246, 0.22),
+    0 0 0 1px rgba(167, 139, 250, 0.1);
+}
+.glow-card-sm-hover:hover {
+  box-shadow:
+    0 20px 52px rgba(167, 139, 250, 0.26),
+    0 0 0 1px rgba(196, 181, 253, 0.14);
+}
+
+/* --- CTA shine: inner stripe inside button (above gradient, below label) — docs/RIPPLE_BUTTON_EFFECT.md --- */
+.cta-shine-wrap {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: 9999px;
+}
+
+/* Moving highlight; lives inside RippleButton when `enableCtaShine` is set */
+.cta-shine-stripe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 90%;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 40%,
+    rgba(255, 255, 255, 0.65) 50%,
+    rgba(255, 255, 255, 0.2) 60%,
+    transparent 100%
+  );
+  transform: skewX(-10deg) translateX(-120%);
+  /* Slower sweep so the highlight reads clearly on dark buttons */
+  animation: cta-shine 8s cubic-bezier(0.42, 0, 0.58, 1) infinite;
+}
+
+@keyframes cta-shine {
+  0% {
+    transform: skewX(-8deg) translateX(-100%);
+  }
+  100% {
+    transform: skewX(-8deg) translateX(200%);
+  }
+}
+
+/* Intro landing: slow rotating center artwork */
+.intro-orbit {
+  background-image: url("/bg-images/bg-42.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  animation: intro-orbit-spin 95s linear infinite;
+}
+
+@keyframes intro-orbit-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-orbit {
+    animation: none;
+  }
+  .animate-ripple-expand {
+    animation: none;
+  }
+  .cta-shine-stripe {
+    animation: none;
+  }
 }

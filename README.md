@@ -16,7 +16,7 @@ Turn blog posts and text into natural-sounding audio. Paste a URL or text, choos
 
 ## Table of Contents
 
-- [Overview](#overview)
+- [Project Overview](#project-overview)
 - [Features & Functionality](#features--functionality)
 - [Technology Stack](#technology-stack)
 - [Project Structure](#project-structure)
@@ -33,7 +33,7 @@ Turn blog posts and text into natural-sounding audio. Paste a URL or text, choos
 
 ---
 
-## Overview
+## Project Overview
 
 **AI Blog Reader** is a full-stack app that:
 
