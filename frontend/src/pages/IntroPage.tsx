@@ -1,10 +1,11 @@
 /**
  * Portfolio landing: full-viewport column, shared PageBackground, motion, CTA with shine + ripple.
  */
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { PageBackground } from "@/components/layout/PageBackground";
+import { BackendDocLinks } from "@/components/layout/BackendDocLinks";
 import { RippleButton } from "@/components/ui/RippleButton";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
@@ -29,7 +30,7 @@ const stepIconFrame =
 const BADGES = [
   { icon: Sparkles, label: "Portfolio showcase" },
   { icon: Layers, label: "FastAPI + React + TypeScript" },
-  { icon: Brain, label: "Multi-provider TTS" },
+  { icon: Brain, label: "Multi-provider TTS as screen responsive" },
 ] as const;
 
 const SUBTITLE =
@@ -72,6 +73,10 @@ const easeIO = [0.42, 0, 0.58, 1] as const;
 export default function IntroPage() {
   const navigate = useNavigate();
   const reduced = usePrefersReducedMotion();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
 
   const stairItem = useMemo(() => {
     const ease = [0.22, 1, 0.36, 1] as const;
@@ -124,31 +129,43 @@ export default function IntroPage() {
     [reduced],
   );
 
-  const titleIndex = BADGES.length;
+  const headerLinksIndex = BADGES.length;
+  const titleIndex = headerLinksIndex + 1;
   const subtitleIndex = titleIndex + 1;
   const heroCtaIndex = subtitleIndex + 1;
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-x-hidden">
+    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <PageBackground />
 
       <div className="relative z-10 flex flex-1 flex-col px-1 pb-6 pt-8 sm:pb-8 sm:pt-10">
-        <div className="mx-auto flex w-full max-w-[96rem] flex-1 flex-col gap-10 sm:gap-14">
+        <div className="mx-auto flex w-full min-w-0 max-w-[96rem] flex-1 flex-col gap-10 sm:gap-14">
           <header className="flex flex-col gap-6 sm:gap-8">
-            <div className="flex flex-wrap gap-2">
-              {BADGES.map(({ icon: Icon, label }, i) => (
-                <motion.span
-                  key={label}
-                  custom={i}
-                  variants={stairItem}
-                  initial="hidden"
-                  animate="show"
-                  className={badgeClass}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {label}
-                </motion.span>
-              ))}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="flex flex-wrap gap-2">
+                {BADGES.map(({ icon: Icon, label }, i) => (
+                  <motion.span
+                    key={label}
+                    custom={i}
+                    variants={stairItem}
+                    initial="hidden"
+                    animate="show"
+                    className={badgeClass}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {label}
+                  </motion.span>
+                ))}
+              </div>
+              <motion.div
+                custom={headerLinksIndex}
+                variants={stairItem}
+                initial="hidden"
+                animate="show"
+                className="shrink-0 sm:justify-end"
+              >
+                <BackendDocLinks />
+              </motion.div>
             </div>
 
             <motion.div

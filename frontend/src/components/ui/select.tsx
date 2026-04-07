@@ -3,7 +3,13 @@ import * as SelectPrimitive from "@radix-ui/react-select"
 import { Check, ChevronDown, ChevronUp } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const Select = SelectPrimitive.Root
+function Select(
+  props: React.ComponentProps<typeof SelectPrimitive.Root>,
+) {
+  const { modal = false, ...rest } = props
+  return <SelectPrimitive.Root modal={modal} {...rest} />
+}
+Select.displayName = "Select"
 const SelectGroup = SelectPrimitive.Group
 const SelectValue = SelectPrimitive.Value
 
@@ -65,7 +71,7 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, ref) => (
+>(({ className, children, position = "popper", onOpenAutoFocus, ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
@@ -76,6 +82,10 @@ const SelectContent = React.forwardRef<
         className
       )}
       position={position}
+      onOpenAutoFocus={(e) => {
+        onOpenAutoFocus?.(e)
+        if (!e.defaultPrevented) e.preventDefault()
+      }}
       {...props}
     >
       <SelectScrollUpButton />

@@ -1,13 +1,13 @@
 /**
  * AI Blog Reader — main tool UI (routed at `/app`).
- * Tabs: paste text or blog URL. Fetches TTS providers/voices from API, sends convert request,
- * shows audio player and download. Sample texts, character limit, estimated duration.
- * Shares PageBackground + max-w shell with Intro for a consistent portfolio look.
+ * Features: multi-provider TTS, pipeline mode with SSE stepper,
+ * provider health indicators, dynamic voices, conversion history.
  */
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { PageBackground } from "@/components/layout/PageBackground";
+import { BackendDocLinks } from "@/components/layout/BackendDocLinks";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,9 +52,16 @@ import {
   ScrollText,
   Globe2,
   ScanLine,
+  CircleDot,
+  History,
+  Play,
+  CheckCircle2,
+  XCircle,
+  Info,
+  Layers,
+  ChevronDown,
 } from "lucide-react";
 
-/** Page title — aligned with intro `BrainCircuit` frame */
 const readerPageIconFrame =
   "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-violet-500/55 bg-violet-500/10 text-violet-600 shadow-sm ring-1 ring-violet-400/30 dark:border-violet-400/50 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/25 sm:h-14 sm:w-14";
 
@@ -67,7 +74,6 @@ const fieldSurface =
 const tabPanelSurface =
   "glow-panel glow-panel-hover mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-4 shadow-inner dark:border-white/10 dark:bg-slate-950/55";
 
-/** Matches backend TTS_PROVIDERS[provider] shape from /api/providers */
 interface TTSProvider {
   name: string;
   description: string;
@@ -77,13 +83,17 @@ interface TTSProvider {
   max_chars: number;
   supports_speed: boolean;
   is_ai: boolean;
+  status?: string;
+  badge?: string;
+  badge_color?: string;
+  note?: string;
+  models?: Record<string, string>;
 }
 
 interface Providers {
   [key: string]: TTSProvider;
 }
 
-/** Error payload returned by backend (title, message, suggestion, status_code) */
 interface APIError {
   error: boolean;
   title: string;
@@ -91,7 +101,6 @@ interface APIError {
   suggestion: string;
   status_code?: number;
   provider?: string;
-  details?: string;
 }
 
 interface SampleText {
@@ -99,9 +108,36 @@ interface SampleText {
   text: string;
 }
 
+interface ProviderHealth {
+  [key: string]: { status: string; label: string; detail: string };
+}
+
+interface PipelineEvent {
+  event: string;
+  agent?: string;
+  time?: number;
+  logs?: string[];
+  audio_url?: string;
+  timings?: Record<string, number>;
+  metadata?: Record<string, unknown>;
+  message?: string;
+  title?: string;
+  suggestion?: string;
+  status_code?: number;
+  provider?: string;
+}
+
+interface HistoryItem {
+  id: string;
+  timestamp: number;
+  provider: string;
+  voice: string;
+  textPreview: string;
+  audioUrl?: string;
+}
+
 const SPEED_SLIDER_MIN = 0.5;
 const SPEED_SLIDER_MAX = 2;
-/** Major numeric labels + minor ticks every 0.25 between min and max */
 const SPEED_SCALE_TICKS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 const SPEED_SCALE_LABELS = [0.5, 1, 1.5, 2] as const;
 
@@ -111,10 +147,66 @@ function speedToPercent(value: number) {
   );
 }
 
+const STATUS_DOT: Record<string, string> = {
+  green: "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]",
+  yellow: "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]",
+  red: "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]",
+  gray: "bg-slate-400",
+};
+
+const BADGE_COLORS: Record<string, string> = {
+  green:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300",
+  pink: "bg-pink-100 text-pink-700 dark:bg-pink-900/60 dark:text-pink-300",
+  red: "bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300",
+  orange:
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/60 dark:text-orange-300",
+  blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300",
+};
+
+const PIPELINE_AGENTS = [
+  "Extractor",
+  "Analyzer",
+  "Preprocessor",
+  "Optimizer",
+  "Synthesizer",
+  "Validator",
+  "Assembler",
+];
+
+/** Expanded “Read details” copy per provider id */
+const PROVIDER_READ_DETAILS: Record<string, string> = {
+  "edge-tts":
+    "Working: yes — no API key. All voices in the dropdown are available. Simple and Pipeline modes both fully supported.",
+  gtts: "Working: yes — no API key. All languages listed work for free (basic quality). Simple and Pipeline modes both supported.",
+  elevenlabs:
+    "Working: partial — needs API key; free tier has monthly credits. On many free accounts, Rachel, Domi, Elli, Josh, and Sam are blocked as library voices (402). Bella, Antoni, Arnold, and Adam often work; your account may vary. Use Voices API or try voices until one succeeds. Pipeline mode uses the same limits as simple mode (not a way around 402).",
+  huggingface:
+    "Working: no on hf-inference — TTS models are not routed there (404). Not fixed by a new HF token. Prefer Edge or gTTS for free TTS.",
+  replicate:
+    "Working: paid only — Replicate token plus billing. Per-run cost. Simple and Pipeline modes behave the same.",
+  openai:
+    "Working: paid — OpenAI key with quota/credits. All six voices work when your project is billed. Simple and Pipeline modes supported.",
+};
+
+function loadHistory(): HistoryItem[] {
+  try {
+    return JSON.parse(localStorage.getItem("tts_history") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(items: HistoryItem[]) {
+  localStorage.setItem("tts_history", JSON.stringify(items.slice(0, 20)));
+}
+
 export function ReaderPage() {
   const [providers, setProviders] = useState<Providers>({});
+  const [health, setHealth] = useState<ProviderHealth>({});
   const [selectedProvider, setSelectedProvider] = useState("edge-tts");
   const [selectedVoice, setSelectedVoice] = useState("");
+  const [selectedModel, setSelectedModel] = useState("tts-1");
   const [url, setUrl] = useState("");
   const [text, setText] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -126,8 +218,34 @@ export function ReaderPage() {
   const [inputMode, setInputMode] = useState<"url" | "text">("text");
   const [sampleTexts, setSampleTexts] = useState<SampleText[]>([]);
   const [showSamples, setShowSamples] = useState(false);
+  const [pipelineMode, setPipelineMode] = useState(false);
+  const [pipelineSteps, setPipelineSteps] = useState<
+    Record<string, { status: string; time?: number; logs?: string[] }>
+  >({});
+  const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
+  const [showHistory, setShowHistory] = useState(false);
+  const [providerReadDetailsOpen, setProviderReadDetailsOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const reduced = usePrefersReducedMotion();
+
+  const voiceAvailabilityNote = useMemo(() => {
+    switch (selectedProvider) {
+      case "edge-tts":
+        return "Free tier: all Edge voices in the list work. Simple and Pipeline modes.";
+      case "gtts":
+        return "Free tier: every language option works. Simple and Pipeline modes.";
+      case "elevenlabs":
+        return "Free tier: Bella, Antoni, Arnold, and Adam often work via API; Rachel, Domi, Elli, Josh, and Sam are often blocked (library voice / 402). Pipeline mode has the same rules — not a bypass. Add your API key.";
+      case "huggingface":
+        return "TTS on hf-inference is not available for this app (404). A key does not change that.";
+      case "replicate":
+        return "Requires a token and Replicate billing. Same behavior in Pipeline or simple mode.";
+      case "openai":
+        return "Requires an API key with credits. All listed voices work when your account allows TTS. Simple and Pipeline modes.";
+      default:
+        return "";
+    }
+  }, [selectedProvider]);
 
   const stairItem = useMemo(() => {
     const ease = [0.22, 1, 0.36, 1] as const;
@@ -150,7 +268,6 @@ export function ReaderPage() {
     };
   }, [reduced]);
 
-  /** Staggered steps inside each tab panel (Paste / URL) */
   const panelStagger = useMemo(
     () => ({
       hidden: {},
@@ -167,31 +284,26 @@ export function ReaderPage() {
   const panelItem = useMemo(() => {
     const ease = [0.22, 1, 0.36, 1] as const;
     return {
-      hidden: {
-        opacity: 0,
-        y: reduced ? 0 : 14,
-        x: reduced ? 0 : -10,
-      },
+      hidden: { opacity: 0, y: reduced ? 0 : 14, x: reduced ? 0 : -10 },
       show: {
         opacity: 1,
         y: 0,
         x: 0,
-        transition: {
-          duration: reduced ? 0 : 0.45,
-          ease,
-        },
+        transition: { duration: reduced ? 0 : 0.45, ease },
       },
     };
   }, [reduced]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
 
   useEffect(() => {
     fetch(apiUrl("/api/providers"))
       .then((res) => res.json())
       .then((data) => {
         setProviders(data);
-        if (data["edge-tts"]) {
-          setSelectedVoice(data["edge-tts"].default_voice);
-        }
+        if (data["edge-tts"]) setSelectedVoice(data["edge-tts"].default_voice);
       })
       .catch((err) => console.error("Failed to fetch providers:", err));
 
@@ -199,6 +311,11 @@ export function ReaderPage() {
       .then((res) => res.json())
       .then((data) => setSampleTexts(data.samples || []))
       .catch((err) => console.error("Failed to fetch samples:", err));
+
+    fetch(apiUrl("/api/provider-health"))
+      .then((res) => res.json())
+      .then(setHealth)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -212,9 +329,7 @@ export function ReaderPage() {
   const parseErrorResponse = async (response: Response): Promise<APIError> => {
     try {
       const data = await response.json();
-      if (data.detail && typeof data.detail === "object") {
-        return data.detail as APIError;
-      }
+      if (data.detail && typeof data.detail === "object") return data.detail;
       return {
         error: true,
         title: "Error",
@@ -231,6 +346,23 @@ export function ReaderPage() {
     }
   };
 
+  const addToHistory = useCallback(
+    (audioUrl: string) => {
+      const item: HistoryItem = {
+        id: Date.now().toString(),
+        timestamp: Date.now(),
+        provider: selectedProvider,
+        voice: selectedVoice,
+        textPreview: text.slice(0, 80) + (text.length > 80 ? "..." : ""),
+        audioUrl,
+      };
+      const updated = [item, ...history].slice(0, 20);
+      setHistory(updated);
+      saveHistory(updated);
+    },
+    [history, selectedProvider, selectedVoice, text],
+  );
+
   const extractTextFromUrl = async () => {
     if (!url.trim()) {
       setError({
@@ -241,25 +373,19 @@ export function ReaderPage() {
       });
       return;
     }
-
     setExtracting(true);
     setError(null);
-
     try {
       const formData = new FormData();
       formData.append("url", url);
-
       const response = await fetch(apiUrl("/api/extract-text"), {
         method: "POST",
         body: formData,
       });
-
       if (!response.ok) {
-        const errorData = await parseErrorResponse(response);
-        setError(errorData);
+        setError(await parseErrorResponse(response));
         return;
       }
-
       const data = await response.json();
       setText(data.text);
       setInputMode("text");
@@ -285,41 +411,167 @@ export function ReaderPage() {
       });
       return;
     }
-
     setLoading(true);
     setError(null);
     setAudioUrl(null);
 
+    if (pipelineMode) {
+      await handlePipelineConvert();
+    } else {
+      await handleSimpleConvert();
+    }
+  };
+
+  const handleSimpleConvert = async () => {
     try {
       const formData = new FormData();
       formData.append("text", text);
       formData.append("provider", selectedProvider);
       formData.append("voice", selectedVoice);
       formData.append("speed", String(speed));
-      if (apiKey) {
-        formData.append("api_key", apiKey);
-      }
+      if (apiKey) formData.append("api_key", apiKey);
+      if (selectedProvider === "openai")
+        formData.append("tts_model", selectedModel);
 
       const response = await fetch(apiUrl("/api/convert"), {
         method: "POST",
         body: formData,
       });
-
       if (!response.ok) {
-        const errorData = await parseErrorResponse(response);
-        setError(errorData);
+        setError(await parseErrorResponse(response));
         return;
       }
-
       const blob = await response.blob();
       const urlBlob = URL.createObjectURL(blob);
       setAudioUrl(urlBlob);
+      addToHistory(urlBlob);
     } catch {
       setError({
         error: true,
         title: "Connection Failed",
         message: "Could not reach the server.",
         suggestion: "Check your connection.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePipelineConvert = async () => {
+    const initSteps: Record<
+      string,
+      { status: string; time?: number; logs?: string[] }
+    > = {};
+    PIPELINE_AGENTS.forEach((a) => (initSteps[a] = { status: "pending" }));
+    setPipelineSteps(initSteps);
+
+    try {
+      const formData = new FormData();
+      formData.append("text", text);
+      if (url) formData.append("url", url);
+      formData.append("provider", selectedProvider);
+      formData.append("voice", selectedVoice);
+      formData.append("speed", String(speed));
+      if (apiKey) formData.append("api_key", apiKey);
+      if (selectedProvider === "openai")
+        formData.append("tts_model", selectedModel);
+
+      const response = await fetch(apiUrl("/api/convert-pipeline"), {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        setError(await parseErrorResponse(response));
+        setLoading(false);
+        return;
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        setError({
+          error: true,
+          title: "Stream Error",
+          message: "Could not read pipeline stream.",
+          suggestion: "Try simple mode.",
+        });
+        setLoading(false);
+        return;
+      }
+
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (!payload) continue;
+          try {
+            const evt: PipelineEvent = JSON.parse(payload);
+            if (evt.event === "agent_start" && evt.agent) {
+              setPipelineSteps((prev) => ({
+                ...prev,
+                [evt.agent!]: { status: "running" },
+              }));
+            } else if (evt.event === "agent_done" && evt.agent) {
+              setPipelineSteps((prev) => ({
+                ...prev,
+                [evt.agent!]: {
+                  status: "done",
+                  time: evt.time,
+                  logs: evt.logs,
+                },
+              }));
+            } else if (evt.event === "complete" && evt.audio_url) {
+              const audioResp = await fetch(apiUrl(evt.audio_url));
+              const blob = await audioResp.blob();
+              const urlBlob = URL.createObjectURL(blob);
+              setAudioUrl(urlBlob);
+              addToHistory(urlBlob);
+            } else if (evt.event === "agent_error" && evt.agent) {
+              setPipelineSteps((prev) => ({
+                ...prev,
+                [evt.agent!]: { status: "error", logs: evt.logs },
+              }));
+            } else if (evt.event === "error") {
+              setPipelineSteps((prev) => {
+                const next = { ...prev };
+                const running = Object.entries(next).find(
+                  ([, v]) => v.status === "running",
+                );
+                if (running) {
+                  next[running[0]] = { ...next[running[0]], status: "error" };
+                }
+                return next;
+              });
+              setError({
+                error: true,
+                title: evt.title || "Pipeline Error",
+                message: evt.message || "An error occurred in the pipeline.",
+                suggestion: evt.suggestion || "Try simple mode or Edge TTS.",
+                status_code: evt.status_code,
+                provider: evt.provider,
+              });
+              setLoading(false);
+            }
+          } catch {
+            /* skip malformed */
+          }
+        }
+      }
+    } catch {
+      setError({
+        error: true,
+        title: "Connection Failed",
+        message: "Pipeline stream disconnected.",
+        suggestion: "Check connection or try simple mode.",
       });
     } finally {
       setLoading(false);
@@ -355,10 +607,15 @@ export function ReaderPage() {
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <PageBackground orbitOpacity="opacity-[0.14] dark:opacity-[0.11]" />
-      <div className="relative z-10 flex flex-1 flex-col py-8 sm:py-10">
+      <motion.div
+        className="relative z-10 flex flex-1 flex-col py-8 sm:py-10"
+        initial={{ opacity: 0, y: reduced ? 0 : 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      >
         <div className="mx-auto w-full max-w-[96rem] px-0 sm:px-1">
-          {/* Full width inside the RootLayout max-w-[96rem] shell; inner max-w-5xl was narrowing the card */}
           <div className="mx-auto w-full space-y-6">
+            {/* Header */}
             <motion.div
               className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
               variants={{ hidden: {}, show: {} }}
@@ -390,8 +647,23 @@ export function ReaderPage() {
               <motion.div
                 custom={1}
                 variants={stairItem}
-                className="flex shrink-0 items-center justify-end sm:justify-start"
+                className="flex shrink-0 flex-wrap items-center gap-2 justify-end sm:justify-start"
               >
+                <BackendDocLinks className="w-full justify-end sm:w-auto" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowHistory(!showHistory)}
+                  className="gap-1.5 rounded-full border-violet-500/25 bg-white/60 px-3 shadow-sm backdrop-blur-sm dark:border-violet-400/30 dark:bg-slate-900/70 cursor-pointer"
+                >
+                  <History className="h-3.5 w-3.5" />
+                  History
+                  {history.length > 0 && (
+                    <span className="ml-0.5 rounded-full bg-violet-500/20 px-1.5 text-[10px] font-bold text-violet-300">
+                      {history.length}
+                    </span>
+                  )}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -406,11 +678,134 @@ export function ReaderPage() {
               </motion.div>
             </motion.div>
 
+            {/* Provider status banner */}
+            <motion.div
+              custom={2}
+              variants={stairItem}
+              initial="hidden"
+              animate="show"
+              className="rounded-xl border border-violet-400/30 bg-violet-950/20 p-3 backdrop-blur-sm dark:border-violet-500/30 dark:bg-violet-950/40"
+            >
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-sm font-semibold text-violet-200">
+                      Provider Status
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setProviderReadDetailsOpen((o) => !o)}
+                      className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-violet-200 hover:text-violet-100 cursor-pointer"
+                    >
+                      <Info className="h-3.5 w-3.5 shrink-0 text-violet-200" />
+                      Read details about AI models, free tier, and limits
+                      <ChevronDown
+                        className={cn(
+                          "h-3.5 w-3.5 transition-transform",
+                          providerReadDetailsOpen && "rotate-180",
+                        )}
+                        aria-hidden
+                      />
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-violet-300/90">
+                    {Object.entries(providers).map(([key, p]) => {
+                      const h = health[key];
+                      const dotColor = h?.status || "gray";
+                      return (
+                        <span key={key} className="flex items-center gap-1">
+                          <span
+                            className={cn(
+                              "inline-block h-2 w-2 rounded-full",
+                              STATUS_DOT[dotColor] || STATUS_DOT.gray,
+                            )}
+                          />
+                          {p.name}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {providerReadDetailsOpen && (
+                    <div className="space-y-3 rounded-lg border border-violet-500/25 bg-slate-950/50 p-3 text-[11px] leading-relaxed text-slate-400">
+                      {Object.entries(providers).map(([key, p]) => (
+                        <div
+                          key={key}
+                          className="border-t border-white/10 pt-2 first:border-0 first:pt-0"
+                        >
+                          <p className="font-semibold text-violet-200">
+                            {p.name}
+                          </p>
+                          <p className="mt-1">
+                            {PROVIDER_READ_DETAILS[key] ??
+                              "See provider documentation for limits and keys."}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* History panel */}
+            {showHistory && history.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="overflow-hidden rounded-xl border border-violet-400/30 bg-slate-950/40 p-3 backdrop-blur-sm"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-violet-200">
+                    Recent Conversions
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistory([]);
+                      saveHistory([]);
+                    }}
+                    className="text-[10px] text-violet-400 hover:text-violet-200"
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-themed">
+                  {history.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 rounded-lg bg-slate-900/50 px-3 py-2 text-xs"
+                    >
+                      <span className="shrink-0 text-violet-400">
+                        {providers[item.provider]?.name || item.provider}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-slate-400">
+                        {item.textPreview}
+                      </span>
+                      <span className="shrink-0 text-[10px] text-slate-500">
+                        {new Date(item.timestamp).toLocaleTimeString()}
+                      </span>
+                      {item.audioUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setAudioUrl(item.audioUrl!)}
+                          className="shrink-0 text-violet-400 hover:text-violet-200"
+                        >
+                          <Play className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Main card */}
             <motion.div
               variants={{ hidden: {}, show: {} }}
               initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, amount: 0.08 }}
+              animate="show"
+              transition={{ delayChildren: reduced ? 0 : 0.28 }}
             >
               <Card className={glassCardClass}>
                 <CardHeader className="space-y-4 pb-2">
@@ -419,7 +814,6 @@ export function ReaderPage() {
                     variants={stairItem}
                     className="flex items-stretch gap-3 sm:gap-4"
                   >
-                    {/* Logo height matches title + description: stretch row; SVG must not set huge intrinsic width/height */}
                     <div
                       className="flex min-h-0 shrink-0 items-stretch py-0.5"
                       aria-hidden
@@ -438,12 +832,14 @@ export function ReaderPage() {
                         AI Text-to-Speech
                       </CardTitle>
                       <CardDescription className="mt-1 text-slate-600 dark:text-slate-300">
-                        Use AI models from OpenAI, ElevenLabs, or Replicate
+                        6 providers: Edge TTS, gTTS (free) + ElevenLabs, Hugging
+                        Face, Replicate, OpenAI
                       </CardDescription>
                     </div>
                   </motion.div>
                 </CardHeader>
                 <CardContent className="space-y-6 pt-2">
+                  {/* Tabs */}
                   <Tabs
                     value={inputMode}
                     onValueChange={(v) => setInputMode(v as "url" | "text")}
@@ -459,7 +855,7 @@ export function ReaderPage() {
                           className={cn(
                             "gap-2 rounded-xl border-2 py-2.5 text-sm transition-all duration-200",
                             "data-[state=inactive]:border-violet-400/40 data-[state=inactive]:bg-slate-900/[0.12] data-[state=inactive]:text-muted-foreground dark:data-[state=inactive]:border-violet-500/45 dark:data-[state=inactive]:bg-white/[0.06]",
-                            "data-[state=inactive]:hover:border-violet-400/55 data-[state=inactive]:hover:bg-violet-500/12 data-[state=inactive]:hover:text-slate-800 data-[state=inactive]:hover:shadow-[0_8px_26px_rgba(139,92,246,0.2)] dark:data-[state=inactive]:hover:text-slate-100",
+                            "data-[state=inactive]:hover:border-violet-400/55 data-[state=inactive]:hover:bg-violet-500/12 data-[state=inactive]:hover:text-slate-800 dark:data-[state=inactive]:hover:text-slate-100",
                             "data-[state=active]:border-violet-400/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-[0_12px_32px_rgba(124,58,237,0.45)]",
                           )}
                         >
@@ -471,7 +867,7 @@ export function ReaderPage() {
                           className={cn(
                             "gap-2 rounded-xl border-2 py-2.5 text-sm transition-all duration-200",
                             "data-[state=inactive]:border-violet-400/40 data-[state=inactive]:bg-slate-900/[0.12] data-[state=inactive]:text-muted-foreground dark:data-[state=inactive]:border-violet-500/45 dark:data-[state=inactive]:bg-white/[0.06]",
-                            "data-[state=inactive]:hover:border-violet-400/55 data-[state=inactive]:hover:bg-violet-500/12 data-[state=inactive]:hover:text-slate-800 data-[state=inactive]:hover:shadow-[0_8px_26px_rgba(139,92,246,0.2)] dark:data-[state=inactive]:hover:text-slate-100",
+                            "data-[state=inactive]:hover:border-violet-400/55 data-[state=inactive]:hover:bg-violet-500/12 data-[state=inactive]:hover:text-slate-800 dark:data-[state=inactive]:hover:text-slate-100",
                             "data-[state=active]:border-violet-400/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-[0_12px_32px_rgba(124,58,237,0.45)]",
                           )}
                         >
@@ -504,12 +900,11 @@ export function ReaderPage() {
                                 htmlFor="url"
                                 className="block cursor-pointer text-base font-semibold leading-tight tracking-tight text-slate-800 dark:text-slate-100"
                               >
-                                {"Paste a public article or blog URL"}
+                                Paste a public article or blog URL
                               </Label>
                               <p className="text-xs leading-snug text-slate-600 dark:text-slate-400">
-                                We open the page and pull the main readable
-                                content—then you can tweak it on the Paste or
-                                type tab.
+                                We pull the main readable content then you can
+                                edit it.
                               </p>
                             </div>
                           </div>
@@ -534,24 +929,15 @@ export function ReaderPage() {
                             {extracting ? (
                               <>
                                 <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                                <span>Fetching…</span>
+                                Fetching…
                               </>
                             ) : (
                               <>
-                                <ScanLine
-                                  className="h-4 w-4 shrink-0"
-                                  strokeWidth={2}
-                                />
-                                <span>Fetch article text</span>
+                                <ScanLine className="h-4 w-4 shrink-0" />
+                                Fetch article text
                               </>
                             )}
                           </Button>
-                        </motion.div>
-                        <motion.div variants={panelItem}>
-                          <p className="text-xs text-muted-foreground">
-                            Works best on public posts; some sites block
-                            automated access.
-                          </p>
                         </motion.div>
                       </motion.div>
                     </TabsContent>
@@ -584,15 +970,27 @@ export function ReaderPage() {
                               {"What we'll read aloud"}
                             </Label>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowSamples(!showSamples)}
-                            className="h-8 shrink-0 rounded-full border-violet-400/35 bg-slate-950/30 text-xs font-medium text-violet-100 shadow-sm backdrop-blur-sm transition-colors hover:border-violet-300/60 hover:bg-violet-500/25 dark:border-violet-400/40 dark:hover:bg-violet-500/20 cursor-pointer"
-                          >
-                            <FileQuestion className="mr-1 h-3 w-3" />
-                            {showSamples ? "Hide" : "Samples"}
-                          </Button>
+                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                            {text.trim() !== "" && (
+                              <button
+                                type="button"
+                                onClick={() => setText("")}
+                                className="text-xs font-medium text-violet-300 hover:text-violet-100 cursor-pointer border border-violet-400/50 hover:border-violet-300/60 rounded-2xl px-2.5 py-1.5 gap-1 items-center inline-flex"
+                              >
+                                <X className="h-3 w-3" />
+                                Clear texts
+                              </button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowSamples(!showSamples)}
+                              className="h-8 shrink-0 rounded-full border-violet-400/35 bg-slate-950/30 text-xs font-medium text-violet-100 shadow-sm backdrop-blur-sm hover:border-violet-300/60 hover:bg-violet-500/25 dark:border-violet-400/40 dark:hover:bg-violet-500/20 cursor-pointer"
+                            >
+                              <FileQuestion className="mr-1 h-3 w-3" />
+                              {showSamples ? "Hide" : "Samples"}
+                            </Button>
+                          </div>
                         </motion.div>
 
                         {showSamples && (
@@ -601,8 +999,6 @@ export function ReaderPage() {
                             initial="hidden"
                             animate="show"
                             className="flex flex-wrap gap-2 rounded-xl border border-violet-400/30 bg-violet-950/25 p-3 shadow-inner backdrop-blur-sm dark:border-violet-400/35 dark:bg-violet-950/40"
-                            role="group"
-                            aria-label="Sample texts"
                           >
                             {sampleTexts.map((sample, idx) => (
                               <button
@@ -612,9 +1008,8 @@ export function ReaderPage() {
                                 className={cn(
                                   "rounded-lg border-2 border-violet-400/45 bg-slate-950/50 px-3 py-2 text-left text-xs font-semibold text-violet-100",
                                   "shadow-sm transition-all duration-200",
-                                  "hover:-translate-y-0.5 hover:border-fuchsia-400/70 hover:bg-violet-600/25 hover:text-white hover:shadow-[0_0_18px_rgba(192,38,211,0.35)]",
-                                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950",
-                                  "active:translate-y-0 active:scale-[0.99]",
+                                  "hover:-translate-y-0.5 hover:border-fuchsia-400/70 hover:bg-violet-600/25 hover:text-white",
+                                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/70",
                                 )}
                               >
                                 {sample.title}
@@ -661,6 +1056,7 @@ export function ReaderPage() {
                     </TabsContent>
                   </Tabs>
 
+                  {/* Provider + Voice */}
                   <motion.div
                     custom={3}
                     variants={stairItem}
@@ -677,7 +1073,7 @@ export function ReaderPage() {
                           htmlFor="provider"
                           className="text-slate-700 dark:text-slate-200"
                         >
-                          AI Provider
+                          Select AI Model Provider
                         </Label>
                         <Select
                           value={selectedProvider}
@@ -687,29 +1083,54 @@ export function ReaderPage() {
                             id="provider"
                             className={cn(fieldSurface, "h-11")}
                           >
-                            <SelectValue placeholder="Select provider" />
+                            <SelectValue placeholder="Select a provider" />
                           </SelectTrigger>
                           <SelectContent>
                             {Object.entries(providers).map(
-                              ([key, provider]) => (
-                                <SelectItem key={key} value={key}>
-                                  <div className="flex items-center gap-2">
-                                    {provider.is_ai ? (
-                                      <Brain className="h-4 w-4 text-violet-500" />
-                                    ) : (
-                                      <Zap className="h-4 w-4 text-yellow-500" />
-                                    )}
-                                    {provider.name}
-                                  </div>
-                                </SelectItem>
-                              ),
+                              ([key, provider]) => {
+                                const h = health[key];
+                                const dotColor = h?.status || "gray";
+                                return (
+                                  <SelectItem key={key} value={key}>
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={cn(
+                                          "inline-block h-2 w-2 rounded-full",
+                                          STATUS_DOT[dotColor] ||
+                                            STATUS_DOT.gray,
+                                        )}
+                                      />
+                                      {provider.is_ai ? (
+                                        <Brain className="h-3.5 w-3.5 text-violet-500" />
+                                      ) : (
+                                        <Zap className="h-3.5 w-3.5 text-yellow-500" />
+                                      )}
+                                      <span>{provider.name}</span>
+                                      {provider.badge && (
+                                        <span
+                                          className={cn(
+                                            "rounded px-1 py-0.5 text-[9px] font-bold leading-none",
+                                            BADGE_COLORS[
+                                              provider.badge_color || "gray"
+                                            ] || "",
+                                          )}
+                                        >
+                                          {provider.badge}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                );
+                              },
                             )}
                           </SelectContent>
                         </Select>
-                        {currentProvider && (
-                          <p className="text-xs text-muted-foreground">
-                            {currentProvider.description}
-                          </p>
+                        {/* Provider note */}
+                        {currentProvider?.note && (
+                          <div className="flex items-start gap-1.5 rounded-lg border border-slate-700/40 bg-slate-950/30 px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
+                            <Info className="mt-0.5 h-3 w-3 shrink-0 text-violet-400" />
+                            <span>{currentProvider.note}</span>
+                          </div>
                         )}
                       </motion.div>
 
@@ -718,7 +1139,7 @@ export function ReaderPage() {
                           htmlFor="voice"
                           className="text-slate-700 dark:text-slate-200"
                         >
-                          Voice
+                          Choose Voice To Generate Audio
                         </Label>
                         <Select
                           value={selectedVoice}
@@ -728,7 +1149,7 @@ export function ReaderPage() {
                             id="voice"
                             className={cn(fieldSurface, "h-11")}
                           >
-                            <SelectValue placeholder="Select voice" />
+                            <SelectValue placeholder="Select a voice" />
                           </SelectTrigger>
                           <SelectContent>
                             {currentProvider &&
@@ -741,10 +1162,44 @@ export function ReaderPage() {
                               )}
                           </SelectContent>
                         </Select>
+                        {voiceAvailabilityNote && (
+                          <div className="flex items-start gap-1.5 rounded-lg border border-slate-700/40 bg-slate-950/30 px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
+                            <Info className="mt-0.5 h-3 w-3 shrink-0 text-violet-400" />
+                            <span>{voiceAvailabilityNote}</span>
+                          </div>
+                        )}
                       </motion.div>
                     </motion.div>
+
+                    {/* OpenAI model selector */}
+                    {selectedProvider === "openai" &&
+                      currentProvider?.models && (
+                        <motion.div variants={panelItem} className="space-y-2">
+                          <Label className="text-slate-700 dark:text-slate-200">
+                            OpenAI Model
+                          </Label>
+                          <Select
+                            value={selectedModel}
+                            onValueChange={setSelectedModel}
+                          >
+                            <SelectTrigger className={cn(fieldSurface, "h-11")}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(currentProvider.models).map(
+                                ([key, label]) => (
+                                  <SelectItem key={key} value={key}>
+                                    {label as string}
+                                  </SelectItem>
+                                ),
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </motion.div>
+                      )}
                   </motion.div>
 
+                  {/* Speed */}
                   {currentProvider?.supports_speed && (
                     <motion.div
                       custom={4}
@@ -825,7 +1280,9 @@ export function ReaderPage() {
                                 <span
                                   key={v}
                                   className="absolute -translate-x-1/2"
-                                  style={{ left: `${speedToPercent(v)}%` }}
+                                  style={{
+                                    left: `${speedToPercent(v)}%`,
+                                  }}
                                 >
                                   {Number.isInteger(v) ? v : v.toFixed(1)}
                                 </span>
@@ -837,6 +1294,7 @@ export function ReaderPage() {
                     </motion.div>
                   )}
 
+                  {/* API Key */}
                   {currentProvider?.requires_api_key && (
                     <motion.div
                       custom={5}
@@ -861,15 +1319,101 @@ export function ReaderPage() {
                       />
                       <p className="text-xs text-muted-foreground">
                         {selectedProvider === "openai" &&
-                          "Get key from platform.openai.com"}
+                          "Get key from platform.openai.com ($5 free credits for new accounts)"}
                         {selectedProvider === "elevenlabs" &&
-                          "Get key from elevenlabs.io (free tier available)"}
+                          "Get key from elevenlabs.io (free tier: 10k credits/month)"}
                         {selectedProvider === "replicate" &&
-                          "Get token from replicate.com"}
+                          "Get token from replicate.com (requires billing)"}
                       </p>
                     </motion.div>
                   )}
 
+                  {/* Pipeline toggle */}
+                  <motion.div
+                    custom={5}
+                    variants={stairItem}
+                    className="flex items-center gap-3"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPipelineMode(!pipelineMode)}
+                      className={cn(
+                        "flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
+                        pipelineMode
+                          ? "border-violet-400/60 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                          : "border-slate-600/40 bg-slate-900/30 text-slate-400 hover:border-violet-400/40 hover:text-slate-300",
+                      )}
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Pipeline Mode
+                      {pipelineMode ? " ON" : " OFF"}
+                    </button>
+                    <span className="text-[10px] text-slate-500">
+                      {pipelineMode
+                        ? "Multi-agent: Extract → Analyze → Preprocess → Optimize → Synthesize → Validate → Assemble"
+                        : "Simple: direct text-to-speech conversion"}
+                    </span>
+                  </motion.div>
+
+                  {/* Pipeline stepper */}
+                  {pipelineMode && Object.keys(pipelineSteps).length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      className="space-y-1 rounded-xl border border-violet-400/30 bg-slate-950/40 p-3"
+                    >
+                      <h4 className="mb-2 text-xs font-semibold text-violet-300">
+                        Pipeline Progress
+                      </h4>
+                      {PIPELINE_AGENTS.map((agent) => {
+                        const step = pipelineSteps[agent];
+                        if (!step) return null;
+                        return (
+                          <div
+                            key={agent}
+                            className="flex items-center gap-2 py-1 text-xs"
+                          >
+                            {step.status === "done" && (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                            )}
+                            {step.status === "running" && (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin text-violet-400" />
+                            )}
+                            {step.status === "pending" && (
+                              <CircleDot className="h-3.5 w-3.5 text-slate-600" />
+                            )}
+                            {step.status === "error" && (
+                              <XCircle className="h-3.5 w-3.5 text-red-400" />
+                            )}
+                            <span
+                              className={cn(
+                                "font-medium",
+                                step.status === "done"
+                                  ? "text-emerald-300"
+                                  : step.status === "running"
+                                    ? "text-violet-300"
+                                    : "text-slate-500",
+                              )}
+                            >
+                              {agent}
+                            </span>
+                            {step.time !== undefined && (
+                              <span className="text-[10px] text-slate-500">
+                                {step.time}s
+                              </span>
+                            )}
+                            {step.logs && step.logs.length > 0 && (
+                              <span className="truncate text-[10px] text-slate-600">
+                                {step.logs[step.logs.length - 1]}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+
+                  {/* Error */}
                   {error && (
                     <motion.div
                       key={error.title + (error.message ?? "")}
@@ -883,7 +1427,7 @@ export function ReaderPage() {
                         duration: reduced ? 0 : 0.42,
                         ease: [0.22, 1, 0.36, 1],
                       }}
-                      className="relative rounded-lg border border-red-200 bg-red-50 p-4 shadow-[0_16px_44px_rgba(225,29,72,0.2)] transition-shadow duration-300 dark:border-red-900/50 dark:bg-red-950/30 dark:shadow-[0_18px_50px_rgba(248,113,113,0.22)]"
+                      className="relative rounded-lg border border-red-200 bg-red-50 p-4 shadow-[0_16px_44px_rgba(225,29,72,0.2)] dark:border-red-900/50 dark:bg-red-950/30"
                     >
                       <button
                         type="button"
@@ -917,6 +1461,7 @@ export function ReaderPage() {
                     </motion.div>
                   )}
 
+                  {/* Generate button */}
                   <motion.div
                     custom={6}
                     variants={stairItem}
@@ -931,24 +1476,27 @@ export function ReaderPage() {
                       {loading ? (
                         <>
                           <Loader2 className="h-5 w-5 animate-spin" />
-                          Generating with AI...
+                          {pipelineMode
+                            ? "Running Pipeline..."
+                            : "Generating with AI..."}
                         </>
                       ) : (
                         <>
                           <Sparkles className="h-5 w-5" />
-                          Generate Audio
+                          {pipelineMode ? "Run Pipeline" : "Generate Audio"}
                         </>
                       )}
                     </Button>
                   </motion.div>
 
+                  {/* Audio result */}
                   {audioUrl && (
                     <motion.div
                       custom={7}
                       variants={stairItem}
                       initial={false}
                       animate="show"
-                      className="space-y-4 rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.18)] transition-shadow duration-300 dark:border-green-800 dark:from-green-950/30 dark:to-emerald-950/30 dark:shadow-[0_20px_54px_rgba(52,211,153,0.22)]"
+                      className="space-y-4 rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.18)] dark:border-green-800 dark:from-green-950/30 dark:to-emerald-950/30"
                     >
                       <div className="flex items-center justify-between">
                         <h3 className="flex items-center gap-2 font-medium text-green-800 dark:text-green-200">
@@ -959,7 +1507,7 @@ export function ReaderPage() {
                           variant="outline"
                           size="sm"
                           onClick={handleDownload}
-                          className="border-green-300 text-green-700 cursor-pointer"
+                          className="border-green-300 text-green-500 cursor-pointer"
                         >
                           <Download className="h-4 w-4" />
                           Download
@@ -977,96 +1525,73 @@ export function ReaderPage() {
               </Card>
             </motion.div>
 
+            {/* Provider info cards */}
             <motion.section
-              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
               variants={{ hidden: {}, show: {} }}
               initial="hidden"
-              whileInView="show"
-              viewport={{ once: true, amount: 0.12 }}
+              animate="show"
+              transition={{ delayChildren: reduced ? 0 : 0.52 }}
             >
-              <motion.div custom={0} variants={stairItem}>
-                <Card className="glow-card-sm glow-card-sm-hover border-green-200 bg-white/70 backdrop-blur-md dark:border-green-900 dark:bg-slate-900/70">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <Zap className="h-4 w-4 text-green-500" />
-                      Edge TTS
-                      <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700 dark:bg-green-900 dark:text-green-300">
-                        FREE
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                      Microsoft neural TTS. Fast & reliable.
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div custom={1} variants={stairItem}>
-                <Card className="glow-card-sm glow-card-sm-hover border-pink-200 bg-white/70 backdrop-blur-md dark:border-pink-900 dark:bg-slate-900/70">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <Sparkles className="h-4 w-4 text-pink-500" />
-                      ElevenLabs
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                      Industry-leading AI voices. Free tier.
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div custom={2} variants={stairItem}>
-                <Card className="glow-card-sm glow-card-sm-hover border-yellow-200 bg-white/70 backdrop-blur-md dark:border-yellow-900 dark:bg-slate-900/70">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <Brain className="h-4 w-4 text-yellow-500" />
-                      Hugging Face
-                      <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
-                        LIMITED
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                      Free but unreliable. May fail often.
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div custom={3} variants={stairItem}>
-                <Card className="glow-card-sm glow-card-sm-hover border-violet-200 bg-white/70 backdrop-blur-md dark:border-violet-900 dark:bg-slate-900/70">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <Brain className="h-4 w-4 text-violet-500" />
-                      OpenAI TTS
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-xs text-muted-foreground">
-                      Premium AI voices. Requires API key.
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
+              {Object.entries(providers).map(([key, p], idx) => {
+                const h = health[key];
+                const dotColor = h?.status || "gray";
+                return (
+                  <motion.div key={key} custom={idx} variants={stairItem}>
+                    <Card className="glow-card-sm glow-card-sm-hover border-slate-200 bg-white/70 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/70">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                          <span
+                            className={cn(
+                              "inline-block h-2.5 w-2.5 rounded-full",
+                              STATUS_DOT[dotColor] || STATUS_DOT.gray,
+                            )}
+                          />
+                          {p.is_ai ? (
+                            <Brain className="h-4 w-4 text-violet-500" />
+                          ) : (
+                            <Zap className="h-4 w-4 text-yellow-500" />
+                          )}
+                          {p.name}
+                          {p.badge && (
+                            <span
+                              className={cn(
+                                "rounded px-1.5 py-0.5 text-[10px] font-bold",
+                                BADGE_COLORS[p.badge_color || "gray"] || "",
+                              )}
+                            >
+                              {p.badge}
+                            </span>
+                          )}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-xs text-muted-foreground">
+                          {p.description}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                );
+              })}
             </motion.section>
 
             <motion.p
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: reduced ? 0 : 10 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{
                 duration: reduced ? 0 : 0.45,
                 ease: [0.22, 1, 0.36, 1],
+                delay: reduced ? 0 : 0.7,
               }}
-              viewport={{ once: true }}
               className="text-center text-sm text-muted-foreground"
             >
-              Powered by Edge TTS • ElevenLabs • Hugging Face • OpenAI
+              Powered by Edge TTS • gTTS • ElevenLabs • Hugging Face • Replicate
+              • OpenAI
             </motion.p>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

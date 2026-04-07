@@ -14,11 +14,11 @@ export function RootLayout({ children, className }: RootLayoutProps) {
   return (
     <div
       className={cn(
-        'mx-auto flex w-full min-h-[100dvh] max-w-[96rem] flex-col px-4 sm:px-6 lg:px-8',
+        'mx-auto flex w-full min-h-[100dvh] min-w-0 max-w-[96rem] flex-col px-4 sm:px-6 lg:px-8',
         className,
       )}
     >
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
       <Footer />
     </div>
   )

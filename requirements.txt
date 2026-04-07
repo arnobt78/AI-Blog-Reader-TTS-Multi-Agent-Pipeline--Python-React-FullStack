@@ -1,3 +1,6 @@
+# Backend dependencies for FastAPI app with multi-provider TTS, text chunking, provider health checks, and dynamic voice loading.
+
+# Core FastAPI dependencies
 fastapi
 uvicorn
 requests
@@ -12,5 +15,10 @@ elevenlabs
 replicate
 huggingface_hub
 
-# Free fallback
+# Free TTS
 edge-tts
+gTTS
+
+# Audio processing (audioop-lts: stdlib audioop was removed in Python 3.13; pydub needs it)
+audioop-lts; python_version >= "3.13"
+pydub
