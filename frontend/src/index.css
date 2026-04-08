@@ -1,7 +1,39 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "DM Sans";
+  src: url("/fonts/dm-sans-latin-var-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "DM Sans";
+  src: url("/fonts/dm-sans-latin-var-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/instrument-serif-latin-regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("/fonts/instrument-serif-latin-italic.woff2") format("woff2");
+  font-style: italic;
+  font-weight: 400;
+  font-display: block;
+}
+
 @theme {
-  /* Loaded via Google Fonts in index.html — display for hero, sans for UI body */
+  /* Loaded from local /public/fonts — display for hero, sans for UI body */
   --font-sans:
     "DM Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
@@ -375,9 +407,11 @@ html.dark .scrollbar-themed::-webkit-scrollbar-thumb:hover {
   }
 }
 
-/* Intro landing: slow rotating center artwork */
-.intro-orbit {
-  background-image: url("/bg-images/bg-42.png");
+/* Intro + reader: slow rotating center artwork (shared keyframes below) */
+.intro-orbit,
+.reader-orbit {
+  /* background-image: url("/bg-images/bg-42.png"); */
+  background-image: url("/logo.svg");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -394,7 +428,8 @@ html.dark .scrollbar-themed::-webkit-scrollbar-thumb:hover {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .intro-orbit {
+  .intro-orbit,
+  .reader-orbit {
     animation: none;
   }
   .animate-ripple-expand {

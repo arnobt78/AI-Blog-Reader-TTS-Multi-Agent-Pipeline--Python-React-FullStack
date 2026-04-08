@@ -6,8 +6,7 @@ import { cn } from "@/lib/utils"
 function Select(
   props: React.ComponentProps<typeof SelectPrimitive.Root>,
 ) {
-  const { modal = false, ...rest } = props
-  return <SelectPrimitive.Root modal={modal} {...rest} />
+  return <SelectPrimitive.Root {...props} />
 }
 Select.displayName = "Select"
 const SelectGroup = SelectPrimitive.Group
@@ -71,7 +70,7 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", onOpenAutoFocus, ...props }, ref) => (
+>(({ className, children, position = "popper", ...props }, ref) => (
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
@@ -82,10 +81,6 @@ const SelectContent = React.forwardRef<
         className
       )}
       position={position}
-      onOpenAutoFocus={(e) => {
-        onOpenAutoFocus?.(e)
-        if (!e.defaultPrevented) e.preventDefault()
-      }}
       {...props}
     >
       <SelectScrollUpButton />

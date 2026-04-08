@@ -14,11 +14,16 @@ import {
   BookOpen,
   Brain,
   BrainCircuit,
+  History,
   Layers,
+  Server,
   Sparkles,
   Wand2,
+  Workflow,
   Zap,
 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 const badgeClass =
   "glow-card-sm glow-card-sm-hover inline-flex items-center gap-1 rounded-full border border-violet-200/80 bg-white/70 px-3 py-1 text-xs font-medium text-violet-900 backdrop-blur-xs dark:border-violet-500/30 dark:bg-slate-900/60 dark:text-violet-100";
@@ -30,42 +35,139 @@ const stepIconFrame =
 const BADGES = [
   { icon: Sparkles, label: "Portfolio showcase" },
   { icon: Layers, label: "FastAPI + React + TypeScript" },
-  { icon: Brain, label: "Multi-provider TTS as screen responsive" },
+  { icon: Workflow, label: "Pipeline mode, local history, responsive UI" },
 ] as const;
 
 const SUBTITLE =
-  "A full-stack learning lab: extract text from URLs or paste your own, pick a voice engine, and generate MP3 with clear errors and a polished UI — built to ship and to study.";
+  "A full-stack learning lab: extract text from URLs or paste your own, run simple mode or a multi-agent SSE pipeline, pick from Edge TTS through OpenAI (plus gTTS), and land on MP3s with friendly errors, provider health, and browser conversion history — built to ship and to study.";
 
 const HOW_STEPS = [
   {
     icon: BookOpen,
     title: "Bring your content",
-    body: "Paste text or enter a blog URL; the API can extract readable content for you.",
+    body: "Paste text or enter a blog URL; FastAPI scrapes and normalizes readable content for TTS.",
     iconClass: "bg-violet-600/15 text-violet-700 dark:text-violet-300",
   },
   {
     icon: Wand2,
     title: "Choose provider & voice",
-    body: "Edge TTS, ElevenLabs, Hugging Face, OpenAI — each with limits, speed control, and keys when required.",
+    body: "Edge TTS, Google TTS (gTTS), ElevenLabs, Hugging Face, Replicate, and OpenAI — speed control, optional keys, and honest UI notes when free tiers or platform limits apply.",
     iconClass: "bg-fuchsia-600/15 text-fuchsia-700 dark:text-fuchsia-300",
   },
   {
     icon: AudioLines,
     title: "Play & download",
-    body: "Stream in the browser and save MP3 — responsive layout from phone to desktop.",
+    body: "Stream in the browser, save MP3, and revisit recent runs from localStorage — same glass UI from phone to desktop.",
     iconClass: "bg-purple-600/15 text-purple-700 dark:text-purple-300",
   },
 ] as const;
 
 const STACK_ITEMS = [
-  { icon: Zap, text: "Vite 7 + React 19 + TS", color: "text-amber-500" },
+  {
+    icon: Zap,
+    text: "Vite 7 + React 19 + TypeScript",
+    color: "text-amber-500",
+  },
   { icon: Layers, text: "Tailwind 4 + shadcn-style UI", color: "text-sky-500" },
   {
     icon: Sparkles,
-    text: "Framer Motion scroll reveals",
+    text: "Framer Motion entrance + scroll reveals",
     color: "text-violet-500",
   },
-  { icon: Brain, text: "FastAPI TTS orchestration", color: "text-emerald-500" },
+  {
+    icon: Brain,
+    text: "FastAPI + uvicorn, Docker-ready backend",
+    color: "text-emerald-500",
+  },
+  {
+    icon: Workflow,
+    text: "SSE multi-agent pipeline + /api/health",
+    color: "text-fuchsia-500",
+  },
+  {
+    icon: Server,
+    text: "VPS-friendly container deploy",
+    color: "text-cyan-500",
+  },
+  {
+    icon: History,
+    text: "localStorage conversion history",
+    color: "text-orange-400",
+  },
+] as const;
+
+const STATUS_DOT: Record<string, string> = {
+  green: "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]",
+  yellow: "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]",
+  red: "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]",
+  gray: "bg-slate-400",
+};
+
+const BADGE_COLORS: Record<string, string> = {
+  green:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300",
+  pink: "bg-pink-100 text-pink-700 dark:bg-pink-900/60 dark:text-pink-300",
+  red: "bg-red-100 text-red-700 dark:bg-red-900/60 dark:text-red-300",
+  orange:
+    "bg-orange-100 text-orange-700 dark:bg-orange-900/60 dark:text-orange-300",
+  blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300",
+};
+
+const PROVIDER_SHOWCASE = [
+  {
+    name: "Edge TTS (Free)",
+    badge: "FREE",
+    badgeColor: "green" as const,
+    dot: "green" as const,
+    isAi: false,
+    description:
+      "Microsoft neural TTS — free, no API key needed. Always works.",
+  },
+  {
+    name: "Google TTS (Free)",
+    badge: "FREE",
+    badgeColor: "green" as const,
+    dot: "green" as const,
+    isAi: false,
+    description:
+      "Google Translate TTS (gTTS) — free, no API key. Basic quality, 100% reliable.",
+  },
+  {
+    name: "ElevenLabs",
+    badge: "FREEMIUM",
+    badgeColor: "pink" as const,
+    dot: "yellow" as const,
+    isAi: true,
+    description:
+      "Premium AI voices. Free tier: 10k credits/month with Flash model. Some voices may need paid plan.",
+  },
+  {
+    name: "Hugging Face",
+    badge: "UNAVAILABLE",
+    badgeColor: "red" as const,
+    dot: "red" as const,
+    isAi: true,
+    description:
+      "Hub hf-inference router. Currently lists zero TTS models (April 2026). All calls 404. Platform limitation.",
+  },
+  {
+    name: "Replicate",
+    badge: "PAID",
+    badgeColor: "orange" as const,
+    dot: "yellow" as const,
+    isAi: true,
+    description:
+      "High-quality AI TTS. Requires billing (~$0.002–0.01/run). Multiple model options.",
+  },
+  {
+    name: "OpenAI TTS",
+    badge: "PAID",
+    badgeColor: "blue" as const,
+    dot: "yellow" as const,
+    isAi: true,
+    description:
+      "High-quality AI voices. $5 free credits for new accounts. Multiple models available.",
+  },
 ] as const;
 
 const easeIO = [0.42, 0, 0.58, 1] as const;
@@ -303,6 +405,83 @@ export default function IntroPage() {
           </motion.section>
 
           <motion.section
+            className="space-y-4"
+            variants={{
+              hidden: {},
+              show: {
+                transition: {
+                  staggerChildren: reduced ? 0 : 0.09,
+                  delayChildren: reduced ? 0 : 0.05,
+                },
+              },
+            }}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.1 }}
+          >
+            <motion.h2
+              variants={stairItem}
+              custom={0}
+              className="font-display text-2xl text-slate-900 dark:text-slate-100 sm:text-3xl"
+            >
+              Engines on the reader
+            </motion.h2>
+            <motion.p
+              variants={stairItem}
+              custom={1}
+              className="max-w-3xl text-sm text-slate-700 dark:text-slate-300 sm:text-base"
+            >
+              Pick an engine, see free-tier reality in the UI, and fall back
+              when a platform blocks you.
+            </motion.p>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {PROVIDER_SHOWCASE.map((p, idx) => (
+                <motion.div key={p.name} custom={idx + 2} variants={stairItem}>
+                  <Card className="glow-card-sm glow-card-sm-hover h-full border-slate-200 bg-white/70 backdrop-blur-xs dark:border-slate-800 dark:bg-slate-900/70 rounded-3xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                        <span
+                          className={cn(
+                            "inline-block h-2.5 w-2.5 shrink-0 rounded-full",
+                            STATUS_DOT[p.dot] || STATUS_DOT.gray,
+                          )}
+                        />
+                        {p.isAi ? (
+                          <Brain className="h-4 w-4 shrink-0 text-violet-500" />
+                        ) : (
+                          <Zap className="h-4 w-4 shrink-0 text-yellow-500" />
+                        )}
+                        {p.name}
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-bold",
+                            BADGE_COLORS[p.badgeColor] || "",
+                          )}
+                        >
+                          {p.badge}
+                        </span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">
+                        {p.description}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </div>
+            <motion.p
+              variants={stairItem}
+              custom={PROVIDER_SHOWCASE.length + 2}
+              className="text-center text-sm text-white/80"
+            >
+              Powered by Edge TTS • gTTS • ElevenLabs • Hugging Face • Replicate
+              • OpenAI
+            </motion.p>
+          </motion.section>
+
+          <motion.section
             variants={glassCard}
             initial="hidden"
             whileInView="show"
@@ -323,10 +502,13 @@ export default function IntroPage() {
             </motion.h2>
             <motion.p
               variants={glassChild}
-              className="mx-auto mb-6 max-w-xl text-sm text-slate-700 sm:text-base dark:text-slate-300"
+              className="mx-auto mb-4 max-w-2xl text-sm text-slate-700 sm:text-base dark:text-slate-300"
             >
-              Open the reader experience: same API routes in development (Vite
-              proxy), and configurable production base URL via{" "}
+              Open the reader for the full experience: provider and voice
+              selects, simple vs pipeline mode with live SSE steps, speed
+              control, conversion history, API Docs / Health shortcuts, and the
+              same routes in dev via the Vite proxy. Point production at your
+              API with{" "}
               <code className="rounded bg-slate-900/10 px-1.5 py-0.5 text-xs dark:bg-white/10">
                 VITE_API_BASE_URL
               </code>

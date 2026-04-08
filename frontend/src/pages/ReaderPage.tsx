@@ -5,7 +5,7 @@
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { PageBackground } from "@/components/layout/PageBackground";
 import { BackendDocLinks } from "@/components/layout/BackendDocLinks";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
@@ -66,7 +66,7 @@ const readerPageIconFrame =
   "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-violet-500/55 bg-violet-500/10 text-violet-600 shadow-sm ring-1 ring-violet-400/30 dark:border-violet-400/50 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/25 sm:h-14 sm:w-14";
 
 const glassCardClass =
-  "glow-card glow-card-hover rounded-3xl border border-white/40 bg-white/55 backdrop-blur-md dark:border-slate-700/60 dark:bg-slate-900/60";
+  "glow-card glow-card-hover rounded-3xl border border-white/40 bg-white/55 backdrop-blur-xs dark:border-slate-700/60 dark:bg-slate-900/60";
 
 const fieldSurface =
   "glow-field border-2 border-slate-200/90 bg-white text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/85 dark:text-slate-100";
@@ -596,6 +596,18 @@ export function ReaderPage() {
   };
 
   const currentProvider = providers[selectedProvider];
+  const audioReadyMeta = useMemo(() => {
+    const providerLabel = currentProvider?.name ?? selectedProvider;
+    const voiceLabel =
+      currentProvider && selectedVoice
+        ? (currentProvider.voices[selectedVoice] ?? selectedVoice)
+        : selectedVoice || "your selected voice";
+    const genMode = pipelineMode ? "Pipeline" : "Simple";
+    return {
+      detail: `Playback uses ${providerLabel}, voice "${voiceLabel}".`,
+      modeLabel: `${genMode} mode`,
+    };
+  }, [currentProvider, pipelineMode, selectedProvider, selectedVoice]);
   const maxChars = currentProvider?.max_chars || 10000;
   const charCount = text.length;
   const isOverLimit = charCount > maxChars;
@@ -606,7 +618,10 @@ export function ReaderPage() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <PageBackground orbitOpacity="opacity-[0.14] dark:opacity-[0.11]" />
+      <PageBackground
+        orbitClassName="reader-orbit"
+        orbitOpacity="opacity-[0.14] dark:opacity-[0.11]"
+      />
       <motion.div
         className="relative z-10 flex flex-1 flex-col py-8 sm:py-10"
         initial={{ opacity: 0, y: reduced ? 0 : 18 }}
@@ -654,7 +669,7 @@ export function ReaderPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowHistory(!showHistory)}
-                  className="gap-1.5 rounded-full border-violet-500/25 bg-white/60 px-3 shadow-sm backdrop-blur-sm dark:border-violet-400/30 dark:bg-slate-900/70 cursor-pointer"
+                  className="gap-1.5 rounded-full border-violet-500/25 bg-white/60 px-3 shadow-sm backdrop-blur-xs dark:border-violet-400/30 dark:bg-slate-900/70 cursor-pointer"
                 >
                   <History className="h-3.5 w-3.5" />
                   History
@@ -668,7 +683,7 @@ export function ReaderPage() {
                   variant="outline"
                   size="sm"
                   asChild
-                  className="gap-2 rounded-full border-violet-500/25 bg-white/60 px-4 shadow-sm backdrop-blur-sm dark:border-violet-400/30 dark:bg-slate-900/70"
+                  className="gap-2 rounded-full border-violet-500/25 bg-white/60 px-4 shadow-sm backdrop-blur-xs dark:border-violet-400/30 dark:bg-slate-900/70"
                 >
                   <Link to="/">
                     <ArrowLeft className="h-4 w-4" />
@@ -684,7 +699,7 @@ export function ReaderPage() {
               variants={stairItem}
               initial="hidden"
               animate="show"
-              className="rounded-xl border border-violet-400/30 bg-violet-950/20 p-3 backdrop-blur-sm dark:border-violet-500/30 dark:bg-violet-950/40"
+              className="rounded-xl border border-violet-400/30 bg-violet-950/20 p-3 backdrop-blur-xs dark:border-violet-500/30 dark:bg-violet-950/40"
             >
               <div className="flex items-start gap-2">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
@@ -726,79 +741,120 @@ export function ReaderPage() {
                       );
                     })}
                   </div>
-                  {providerReadDetailsOpen && (
-                    <div className="space-y-3 rounded-lg border border-violet-500/25 bg-slate-950/50 p-3 text-[11px] leading-relaxed text-slate-400">
-                      {Object.entries(providers).map(([key, p]) => (
-                        <div
-                          key={key}
-                          className="border-t border-white/10 pt-2 first:border-0 first:pt-0"
-                        >
-                          <p className="font-semibold text-violet-200">
-                            {p.name}
-                          </p>
-                          <p className="mt-1">
-                            {PROVIDER_READ_DETAILS[key] ??
-                              "See provider documentation for limits and keys."}
-                          </p>
-                        </div>
-                      ))}
+                  {/* CSS grid row collapse: avoids FM exit where opacity finishes before layout (hollow box). */}
+                  <div
+                    className={cn(
+                      "grid min-h-0",
+                      providerReadDetailsOpen
+                        ? "grid-rows-[1fr]"
+                        : "grid-rows-[0fr]",
+                      reduced
+                        ? undefined
+                        : "transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "min-h-0 overflow-hidden",
+                        !providerReadDetailsOpen && "pointer-events-none",
+                      )}
+                      aria-hidden={!providerReadDetailsOpen}
+                    >
+                      <div className="space-y-3 rounded-lg border border-violet-500/25 bg-slate-950/50 p-3 text-[11px] leading-relaxed text-slate-400">
+                        {Object.entries(providers).map(([key, p]) => (
+                          <div
+                            key={key}
+                            className="border-t border-white/10 pt-2 first:border-0 first:pt-0"
+                          >
+                            <p className="font-semibold text-violet-200">
+                              {p.name}
+                            </p>
+                            <p className="mt-1">
+                              {PROVIDER_READ_DETAILS[key] ??
+                                "See provider documentation for limits and keys."}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </motion.div>
 
             {/* History panel */}
-            {showHistory && history.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                className="overflow-hidden rounded-xl border border-violet-400/30 bg-slate-950/40 p-3 backdrop-blur-sm"
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-violet-200">
-                    Recent Conversions
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setHistory([]);
-                      saveHistory([]);
-                    }}
-                    className="text-[10px] text-violet-400 hover:text-violet-200"
-                  >
-                    Clear all
-                  </button>
-                </div>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto scrollbar-themed">
-                  {history.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-2 rounded-lg bg-slate-900/50 px-3 py-2 text-xs"
+            <AnimatePresence initial={false}>
+              {showHistory && history.length > 0 && (
+                <motion.div
+                  key="history-panel"
+                  initial={
+                    reduced ? false : { opacity: 0, y: -12, scale: 0.98 }
+                  }
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={
+                    reduced
+                      ? undefined
+                      : {
+                          opacity: 0,
+                          y: -8,
+                          scale: 0.985,
+                          transition: {
+                            duration: 0.2,
+                            ease: [0.22, 1, 0.36, 1],
+                          },
+                        }
+                  }
+                  transition={{
+                    duration: reduced ? 0 : 0.28,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                  className="overflow-hidden rounded-xl border border-violet-400/30 bg-slate-950/40 p-3 backdrop-blur-xs"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-violet-200">
+                      Recent Conversions
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHistory([]);
+                        saveHistory([]);
+                      }}
+                      className="text-[10px] text-violet-400 hover:text-violet-200"
                     >
-                      <span className="shrink-0 text-violet-400">
-                        {providers[item.provider]?.name || item.provider}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-slate-400">
-                        {item.textPreview}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-slate-500">
-                        {new Date(item.timestamp).toLocaleTimeString()}
-                      </span>
-                      {item.audioUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setAudioUrl(item.audioUrl!)}
-                          className="shrink-0 text-violet-400 hover:text-violet-200"
-                        >
-                          <Play className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </motion.div>
-            )}
+                      Clear all
+                    </button>
+                  </div>
+                  <div className="max-h-48 space-y-1.5 overflow-y-auto scrollbar-themed">
+                    {history.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-2 rounded-lg bg-slate-900/50 px-3 py-2 text-xs"
+                      >
+                        <span className="shrink-0 text-violet-400">
+                          {providers[item.provider]?.name || item.provider}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-slate-400">
+                          {item.textPreview}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-slate-500">
+                          {new Date(item.timestamp).toLocaleTimeString()}
+                        </span>
+                        {item.audioUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setAudioUrl(item.audioUrl!)}
+                            className="shrink-0 text-violet-400 hover:text-violet-200"
+                          >
+                            <Play className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Main card */}
             <motion.div
@@ -895,13 +951,30 @@ export function ReaderPage() {
                             >
                               <Globe2 className="h-4 w-4" strokeWidth={2} />
                             </span>
-                            <div className="min-w-0 space-y-0.5">
-                              <Label
-                                htmlFor="url"
-                                className="block cursor-pointer text-base font-semibold leading-tight tracking-tight text-slate-800 dark:text-slate-100"
-                              >
-                                Paste a public article or blog URL
-                              </Label>
+                            <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                                <Label
+                                  htmlFor="url"
+                                  className="min-w-0 flex-1 cursor-pointer text-base font-semibold leading-tight tracking-tight text-slate-800 dark:text-slate-100"
+                                >
+                                  Paste a public article or blog URL
+                                </Label>
+                                <button
+                                  type="button"
+                                  onClick={() => setUrl("")}
+                                  disabled={url.trim() === ""}
+                                  tabIndex={url.trim() === "" ? -1 : 0}
+                                  aria-hidden={url.trim() === ""}
+                                  className={cn(
+                                    "inline-flex shrink-0 items-center gap-1 rounded-2xl border border-violet-400/50 px-2.5 py-1.5 text-xs font-medium text-violet-300 hover:border-violet-300/60 hover:text-violet-100 cursor-pointer disabled:cursor-default",
+                                    url.trim() === "" &&
+                                      "invisible pointer-events-none",
+                                  )}
+                                >
+                                  <X className="h-3 w-3" />
+                                  Clear texts
+                                </button>
+                              </div>
                               <p className="text-xs leading-snug text-slate-600 dark:text-slate-400">
                                 We pull the main readable content then you can
                                 edit it.
@@ -985,7 +1058,7 @@ export function ReaderPage() {
                               variant="outline"
                               size="sm"
                               onClick={() => setShowSamples(!showSamples)}
-                              className="h-8 shrink-0 rounded-full border-violet-400/35 bg-slate-950/30 text-xs font-medium text-violet-100 shadow-sm backdrop-blur-sm hover:border-violet-300/60 hover:bg-violet-500/25 dark:border-violet-400/40 dark:hover:bg-violet-500/20 cursor-pointer"
+                              className="h-8 shrink-0 rounded-full border-violet-400/35 bg-slate-950/30 text-xs font-medium text-violet-100 shadow-sm backdrop-blur-xs hover:border-violet-300/60 hover:bg-violet-500/25 dark:border-violet-400/40 dark:hover:bg-violet-500/20 cursor-pointer"
                             >
                               <FileQuestion className="mr-1 h-3 w-3" />
                               {showSamples ? "Hide" : "Samples"}
@@ -998,7 +1071,7 @@ export function ReaderPage() {
                             variants={panelItem}
                             initial="hidden"
                             animate="show"
-                            className="flex flex-wrap gap-2 rounded-xl border border-violet-400/30 bg-violet-950/25 p-3 shadow-inner backdrop-blur-sm dark:border-violet-400/35 dark:bg-violet-950/40"
+                            className="flex flex-wrap gap-2 rounded-xl border border-violet-400/30 bg-violet-950/25 p-3 shadow-inner backdrop-blur-xs dark:border-violet-400/35 dark:bg-violet-950/40"
                           >
                             {sampleTexts.map((sample, idx) => (
                               <button
@@ -1021,7 +1094,7 @@ export function ReaderPage() {
                         <motion.div variants={panelItem}>
                           <Textarea
                             id="text"
-                            placeholder="Paste your text here..."
+                            placeholder="Write or paste your text here..."
                             value={text}
                             onChange={(e) => setText(e.target.value)}
                             className={`min-h-[220px] resize-y ${fieldSurface} ${isOverLimit ? "border-red-500 dark:border-red-500" : ""}`}
@@ -1214,20 +1287,34 @@ export function ReaderPage() {
                         initial="hidden"
                         animate="show"
                       >
-                        <motion.div
-                          variants={panelItem}
-                          className="flex items-center justify-between"
-                        >
-                          <Label className="flex items-center gap-1">
-                            <Gauge className="h-3 w-3" />
-                            Speed
-                          </Label>
-                          <span className="rounded-md border border-violet-400/35 bg-violet-500/20 px-2 py-1 text-sm font-semibold tabular-nums text-violet-100 shadow-[0_0_12px_rgba(139,92,246,0.25)]">
-                            {speed.toFixed(1)}x
-                          </span>
+                        <motion.div variants={panelItem}>
+                          <div className="flex items-start gap-2 sm:items-center sm:gap-3">
+                            <Label className="flex shrink-0 items-center gap-1.5 text-slate-700 sm:pt-0 dark:text-slate-200">
+                              <Gauge className="h-3.5 w-3.5 shrink-0" />
+                              Speed
+                            </Label>
+                            <span className="min-w-0 flex-1 text-pretty leading-relaxed text-slate-600 text-xs dark:text-violet-200/70">
+                              <span className="font-semibold text-violet-700 dark:text-violet-200/90">
+                                1×
+                              </span>{" "}
+                              is normal speech. Values{" "}
+                              <span className="whitespace-nowrap">
+                                under 1×
+                              </span>{" "}
+                              slow it down (
+                              <span className="tabular-nums">0.5×</span> ≈ half
+                              speed);{" "}
+                              <span className="whitespace-nowrap">over 1×</span>{" "}
+                              speed it up (up to{" "}
+                              <span className="tabular-nums">2×</span>).
+                            </span>
+                            <span className="shrink-0 rounded-md border border-violet-400/35 bg-violet-500/20 px-2 py-1 text-sm font-semibold tabular-nums text-violet-100 shadow-[0_0_12px_rgba(139,92,246,0.25)]">
+                              {speed.toFixed(1)}x
+                            </span>
+                          </div>
                         </motion.div>
                         <motion.div variants={panelItem} className="space-y-1">
-                          <div className="flex justify-between text-[11px] font-medium text-violet-200/90">
+                          <div className="flex justify-between text-xs font-medium text-violet-200/90">
                             <span>Slow</span>
                             <span>Fast</span>
                           </div>
@@ -1273,7 +1360,7 @@ export function ReaderPage() {
                               className="speed-range w-full"
                             />
                             <div
-                              className="relative mt-1 h-4 text-[10px] tabular-nums text-violet-200/90"
+                              className="relative mt-1 h-4 text-xs tabular-nums text-violet-200/90"
                               aria-hidden
                             >
                               {SPEED_SCALE_LABELS.map((v) => (
@@ -1340,7 +1427,7 @@ export function ReaderPage() {
                       className={cn(
                         "flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer",
                         pipelineMode
-                          ? "border-violet-400/60 bg-violet-500/20 text-violet-200 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
+                          ? "border-violet-400/60 bg-violet-500/20 text-violet-100 shadow-[0_0_12px_rgba(139,92,246,0.3)]"
                           : "border-slate-600/40 bg-slate-900/30 text-slate-400 hover:border-violet-400/40 hover:text-slate-300",
                       )}
                     >
@@ -1348,7 +1435,7 @@ export function ReaderPage() {
                       Pipeline Mode
                       {pipelineMode ? " ON" : " OFF"}
                     </button>
-                    <span className="text-[10px] text-slate-500">
+                    <span className="text-xs text-white/70">
                       {pipelineMode
                         ? "Multi-agent: Extract → Analyze → Preprocess → Optimize → Synthesize → Validate → Assemble"
                         : "Simple: direct text-to-speech conversion"}
@@ -1360,7 +1447,7 @@ export function ReaderPage() {
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
-                      className="space-y-1 rounded-xl border border-violet-400/30 bg-slate-950/40 p-3"
+                      className="space-y-1 rounded-3xl border border-violet-400/30 bg-slate-950/40 p-4 sm:p-6"
                     >
                       <h4 className="mb-2 text-xs font-semibold text-violet-300">
                         Pipeline Progress
@@ -1496,18 +1583,26 @@ export function ReaderPage() {
                       variants={stairItem}
                       initial={false}
                       animate="show"
-                      className="space-y-4 rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-4 shadow-[0_18px_48px_rgba(16,185,129,0.18)] dark:border-green-800 dark:from-green-950/30 dark:to-emerald-950/30"
+                      className="space-y-4 rounded-3xl border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-4 sm:p-6 shadow-[0_18px_48px_rgba(16,185,129,0.18)] dark:border-green-800 dark:from-green-950/30 dark:to-emerald-950/30 glow-card glow-card-hover"
                     >
-                      <div className="flex items-center justify-between">
-                        <h3 className="flex items-center gap-2 font-medium text-green-800 dark:text-green-200">
-                          <Volume2 className="h-4 w-4" />
-                          Audio Ready!
-                        </h3>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <h3 className="flex items-center gap-2 font-medium text-green-800 dark:text-green-200">
+                            <Volume2 className="h-4 w-4 shrink-0" />
+                            Your Audio is Ready!
+                          </h3>
+                          <div className="space-y-0.5 pl-0 sm:pl-6">
+                            <p className="text-xs leading-relaxed text-white/80">
+                              {audioReadyMeta.detail} and use the{" "}
+                              {audioReadyMeta.modeLabel}
+                            </p>
+                          </div>
+                        </div>
                         <Button
                           variant="outline"
                           size="sm"
                           onClick={handleDownload}
-                          className="border-green-300 text-green-500 cursor-pointer"
+                          className="shrink-0 self-start border-green-300 text-green-500 cursor-pointer sm:mt-0.5"
                         >
                           <Download className="h-4 w-4" />
                           Download
@@ -1538,7 +1633,7 @@ export function ReaderPage() {
                 const dotColor = h?.status || "gray";
                 return (
                   <motion.div key={key} custom={idx} variants={stairItem}>
-                    <Card className="glow-card-sm glow-card-sm-hover border-slate-200 bg-white/70 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/70">
+                    <Card className="glow-card-sm glow-card-sm-hover border-slate-200 bg-white/70 backdrop-blur-xs dark:border-slate-800 dark:bg-slate-900/70 rounded-3xl">
                       <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-sm font-medium">
                           <span

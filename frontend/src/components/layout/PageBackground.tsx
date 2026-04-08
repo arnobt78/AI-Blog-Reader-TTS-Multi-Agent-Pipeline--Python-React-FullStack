@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 type PageBackgroundProps = {
   /** Public URL under `/public` (e.g. `/bg-images/bg-11.png`). */
   bgImage?: string
-  /** CSS class that sets `background-image` + rotation (see `index.css` `.intro-orbit`). */
+  /** CSS class that sets `background-image` + rotation (see `index.css` `.intro-orbit` / `.reader-orbit`). */
   orbitClassName?: string
   /** Lower opacity on the orbit layer for calmer reader UI. */
   orbitOpacity?: string

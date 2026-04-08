@@ -23,4 +23,8 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    // Default 500 kB; app bundle (React + Framer Motion + lucide) is ~550 kB minified.
+    chunkSizeWarningLimit: 900,
+  },
 })
