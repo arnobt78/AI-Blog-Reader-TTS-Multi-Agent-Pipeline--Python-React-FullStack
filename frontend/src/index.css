@@ -369,6 +369,38 @@ html.dark .scrollbar-themed::-webkit-scrollbar-thumb:hover {
   background: transparent;
 }
 
+/* History panel: thin thumb, transparent track; only shows when content overflows */
+.scrollbar-history {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(167, 139, 250, 0.45) transparent;
+}
+html.dark .scrollbar-history {
+  scrollbar-color: rgba(196, 181, 253, 0.5) transparent;
+}
+.scrollbar-history::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.scrollbar-history::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-history::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: rgba(167, 139, 250, 0.32);
+}
+html.dark .scrollbar-history::-webkit-scrollbar-thumb {
+  background-color: rgba(196, 181, 253, 0.35);
+}
+.scrollbar-history::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(139, 92, 246, 0.55);
+}
+html.dark .scrollbar-history::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(196, 181, 253, 0.55);
+}
+.scrollbar-history::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* --- CTA shine: inner stripe inside button (above gradient, below label) — docs/RIPPLE_BUTTON_EFFECT.md --- */
 .cta-shine-wrap {
   position: relative;

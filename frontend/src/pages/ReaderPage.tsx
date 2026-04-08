@@ -11,6 +11,16 @@ import { BackendDocLinks } from "@/components/layout/BackendDocLinks";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -54,12 +64,15 @@ import {
   ScanLine,
   CircleDot,
   History,
+  ListMusic,
   Play,
+  Square,
   CheckCircle2,
   XCircle,
   Info,
   Layers,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 
 const readerPageIconFrame =
@@ -132,6 +145,8 @@ interface HistoryItem {
   timestamp: number;
   provider: string;
   voice: string;
+  /** Playback speed multiplier when generated */
+  speed?: number;
   textPreview: string;
   audioUrl?: string;
 }
@@ -225,7 +240,12 @@ export function ReaderPage() {
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
   const [providerReadDetailsOpen, setProviderReadDetailsOpen] = useState(false);
+  const [historyItemToDelete, setHistoryItemToDelete] =
+    useState<HistoryItem | null>(null);
+  const [clearAllHistoryOpen, setClearAllHistoryOpen] = useState(false);
+  const [audioPlaying, setAudioPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const pendingHistoryPlayRef = useRef(false);
   const reduced = usePrefersReducedMotion();
 
   const voiceAvailabilityNote = useMemo(() => {
@@ -353,15 +373,108 @@ export function ReaderPage() {
         timestamp: Date.now(),
         provider: selectedProvider,
         voice: selectedVoice,
-        textPreview: text.slice(0, 80) + (text.length > 80 ? "..." : ""),
+        speed,
+        textPreview: text.slice(0, 64) + (text.length > 64 ? "…" : ""),
         audioUrl,
       };
       const updated = [item, ...history].slice(0, 20);
       setHistory(updated);
       saveHistory(updated);
     },
-    [history, selectedProvider, selectedVoice, text],
+    [history, selectedProvider, selectedVoice, speed, text],
   );
+
+  const playFromHistory = useCallback(
+    (url: string) => {
+      if (!url) return;
+      pendingHistoryPlayRef.current = true;
+      if (audioUrl === url && audioRef.current) {
+        const el = audioRef.current;
+        el.currentTime = 0;
+        void el.play().catch(() => {});
+        pendingHistoryPlayRef.current = false;
+        return;
+      }
+      setAudioUrl(url);
+    },
+    [audioUrl],
+  );
+
+  useEffect(() => {
+    if (!audioUrl || !pendingHistoryPlayRef.current) return;
+    const id = requestAnimationFrame(() => {
+      if (!pendingHistoryPlayRef.current) return;
+      pendingHistoryPlayRef.current = false;
+      const el = audioRef.current;
+      if (!el) return;
+      el.load();
+      void el.play().catch(() => {});
+    });
+    return () => cancelAnimationFrame(id);
+  }, [audioUrl]);
+
+  useEffect(() => {
+    if (!audioUrl) {
+      setAudioPlaying(false);
+      return;
+    }
+    let cleaned = false;
+    let el: HTMLAudioElement | null = null;
+    const sync = () => {
+      if (el && !cleaned) setAudioPlaying(!el.paused);
+    };
+    const t = window.setTimeout(() => {
+      if (cleaned) return;
+      el = audioRef.current;
+      if (!el) return;
+      sync();
+      el.addEventListener("play", sync);
+      el.addEventListener("pause", sync);
+      el.addEventListener("ended", sync);
+    }, 0);
+    return () => {
+      cleaned = true;
+      clearTimeout(t);
+      if (el) {
+        el.removeEventListener("play", sync);
+        el.removeEventListener("pause", sync);
+        el.removeEventListener("ended", sync);
+      }
+    };
+  }, [audioUrl]);
+
+  const stopPlayback = useCallback(() => {
+    audioRef.current?.pause();
+  }, []);
+
+  const confirmRemoveHistoryItem = useCallback(() => {
+    if (!historyItemToDelete) return;
+    const removed = historyItemToDelete;
+    setHistoryItemToDelete(null);
+    setHistory((prev) => {
+      const next = prev.filter((h) => h.id !== removed.id);
+      saveHistory(next);
+      return next;
+    });
+    if (removed.audioUrl && audioUrl === removed.audioUrl) {
+      audioRef.current?.pause();
+      setAudioUrl(null);
+      URL.revokeObjectURL(removed.audioUrl);
+    }
+  }, [historyItemToDelete, audioUrl]);
+
+  const confirmClearAllHistory = useCallback(() => {
+    setClearAllHistoryOpen(false);
+    setHistory((prev) => {
+      for (const h of prev) {
+        if (h.audioUrl) URL.revokeObjectURL(h.audioUrl);
+      }
+      saveHistory([]);
+      return [];
+    });
+    audioRef.current?.pause();
+    setAudioUrl(null);
+  }, []);
 
   const extractTextFromUrl = async () => {
     if (!url.trim()) {
@@ -699,7 +812,7 @@ export function ReaderPage() {
               variants={stairItem}
               initial="hidden"
               animate="show"
-              className="rounded-xl border border-violet-400/30 bg-violet-950/20 p-3 backdrop-blur-xs dark:border-violet-500/30 dark:bg-violet-950/40"
+              className="rounded-3xl border border-violet-400/30 bg-violet-950/20 p-4 shadow-xl backdrop-blur-xs dark:border-violet-500/30 dark:bg-violet-950/40"
             >
               <div className="flex items-start gap-2">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-violet-400" />
@@ -724,7 +837,7 @@ export function ReaderPage() {
                       />
                     </button>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-violet-300/90">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-violet-300/90">
                     {Object.entries(providers).map(([key, p]) => {
                       const h = health[key];
                       const dotColor = h?.status || "gray";
@@ -760,7 +873,7 @@ export function ReaderPage() {
                       )}
                       aria-hidden={!providerReadDetailsOpen}
                     >
-                      <div className="space-y-3 rounded-lg border border-violet-500/25 bg-slate-950/50 p-3 text-[11px] leading-relaxed text-slate-400">
+                      <div className="space-y-3 rounded-3xl border border-violet-500/25 bg-slate-950/50 p-4 text-xs leading-relaxed text-slate-400">
                         {Object.entries(providers).map(([key, p]) => (
                           <div
                             key={key}
@@ -787,74 +900,299 @@ export function ReaderPage() {
               {showHistory && history.length > 0 && (
                 <motion.div
                   key="history-panel"
-                  initial={
-                    reduced ? false : { opacity: 0, y: -12, scale: 0.98 }
-                  }
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  initial={reduced ? false : { opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={
                     reduced
                       ? undefined
                       : {
                           opacity: 0,
-                          y: -8,
-                          scale: 0.985,
+                          y: -6,
                           transition: {
-                            duration: 0.2,
+                            duration: 0.22,
                             ease: [0.22, 1, 0.36, 1],
                           },
                         }
                   }
                   transition={{
-                    duration: reduced ? 0 : 0.28,
+                    duration: reduced ? 0 : 0.36,
                     ease: [0.22, 1, 0.36, 1],
                   }}
-                  className="overflow-hidden rounded-xl border border-violet-400/30 bg-slate-950/40 p-3 backdrop-blur-xs"
+                  className="overflow-hidden rounded-3xl border border-violet-400/30 bg-slate-950/40 p-4 shadow-xl backdrop-blur-xs"
                 >
-                  <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-violet-200">
+                  <div className="mb-3 grid grid-cols-[1fr_auto] items-center gap-3">
+                    <h3 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-violet-200">
+                      <ListMusic
+                        className="h-4 w-4 shrink-0 text-violet-400"
+                        aria-hidden
+                      />
                       Recent Conversions
                     </h3>
                     <button
                       type="button"
-                      onClick={() => {
-                        setHistory([]);
-                        saveHistory([]);
-                      }}
-                      className="text-[10px] text-violet-400 hover:text-violet-200"
+                      onClick={() => setClearAllHistoryOpen(true)}
+                      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1 py-0.5 text-xs text-violet-400 transition-colors hover:bg-violet-500/10 hover:text-violet-200"
                     >
+                      <Trash2
+                        className="h-3.5 w-3.5 shrink-0 opacity-90"
+                        aria-hidden
+                      />
                       Clear all
                     </button>
                   </div>
-                  <div className="max-h-48 space-y-1.5 overflow-y-auto scrollbar-themed">
-                    {history.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-2 rounded-lg bg-slate-900/50 px-3 py-2 text-xs"
-                      >
-                        <span className="shrink-0 text-violet-400">
-                          {providers[item.provider]?.name || item.provider}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-slate-400">
-                          {item.textPreview}
-                        </span>
-                        <span className="shrink-0 text-[10px] text-slate-500">
-                          {new Date(item.timestamp).toLocaleTimeString()}
-                        </span>
-                        {item.audioUrl && (
-                          <button
-                            type="button"
-                            onClick={() => setAudioUrl(item.audioUrl!)}
-                            className="shrink-0 text-violet-400 hover:text-violet-200"
-                          >
-                            <Play className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                  <div className="mb-3 flex gap-2 rounded-xl border border-violet-500/20 bg-violet-950/35 px-3 py-2.5 text-[11px] leading-relaxed text-violet-100/80">
+                    <Info
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-400"
+                      aria-hidden
+                    />
+                    <p>
+                      History stores temporary browser links to your audio. After
+                      a full page reload those links usually stop working, so play
+                      may do nothing until you generate again. In the same session,
+                      play should work normally.
+                    </p>
+                  </div>
+                  <div className="max-h-48 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5 scrollbar-history">
+                    {history.map((item) => {
+                      const p = providers[item.provider];
+                      const voiceName =
+                        p?.voices[item.voice] ?? (item.voice || "—");
+                      const speedVal =
+                        item.speed != null && !Number.isNaN(item.speed)
+                          ? item.speed
+                          : 1;
+                      const isThisClip =
+                        Boolean(item.audioUrl) && audioUrl === item.audioUrl;
+                      const isPlayingThis = isThisClip && audioPlaying;
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-lg bg-slate-900/50 px-3 py-2 text-xs"
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                <span className="font-medium text-violet-300">
+                                  {p?.name || item.provider}
+                                </span>
+                                <span
+                                  className="text-[10px] text-violet-200/45"
+                                  aria-hidden
+                                >
+                                  ·
+                                </span>
+                                <span
+                                  className="max-w-[min(100%,12rem)] truncate text-[10px] text-violet-200/85"
+                                  title={String(voiceName)}
+                                >
+                                  {voiceName}
+                                </span>
+                                <span className="rounded border border-violet-500/25 bg-violet-500/10 px-1 py-px text-[10px] tabular-nums text-violet-200/90">
+                                  {speedVal.toFixed(1)}×
+                                </span>
+                              </div>
+                              <p
+                                className="truncate text-[11px] leading-snug text-slate-500/85 dark:text-slate-400/65"
+                                title={item.textPreview}
+                              >
+                                {item.textPreview}
+                              </p>
+                            </div>
+                            <div className="flex shrink-0 flex-col items-end gap-1">
+                              <span className="text-[10px] tabular-nums text-slate-500">
+                                {new Date(item.timestamp).toLocaleTimeString()}
+                              </span>
+                              <div className="flex items-center gap-0.5">
+                                {item.audioUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      isPlayingThis
+                                        ? stopPlayback()
+                                        : playFromHistory(item.audioUrl!)
+                                    }
+                                    className="rounded-md p-1 text-violet-400 transition-colors hover:bg-violet-500/15 hover:text-violet-200"
+                                    aria-label={
+                                      isPlayingThis
+                                        ? "Stop playback"
+                                        : "Play this clip in the player below"
+                                    }
+                                  >
+                                    {isPlayingThis ? (
+                                      <Square className="h-3 w-3 fill-current" />
+                                    ) : (
+                                      <Play className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryItemToDelete(item)}
+                                  className="rounded-md p-1 text-slate-500 transition-colors hover:bg-red-500/15 hover:text-red-300"
+                                  aria-label="Remove this conversion from history"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
+
+            <AlertDialog
+              open={!!historyItemToDelete}
+              onOpenChange={(open) => {
+                if (!open) setHistoryItemToDelete(null);
+              }}
+            >
+              <AlertDialogContent className="border-violet-500/30 dark:bg-slate-950">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove this conversion?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This removes the entry from your saved history. It cannot be
+                    undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {historyItemToDelete && (
+                  <motion.div
+                    key={historyItemToDelete.id}
+                    initial={reduced ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.24,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="space-y-2 rounded-xl border border-violet-500/20 bg-slate-100/90 p-3 text-left text-xs dark:bg-slate-900/70"
+                  >
+                    {(() => {
+                      const hi = historyItemToDelete;
+                      const hp = providers[hi.provider];
+                      const v =
+                        hp?.voices[hi.voice] ?? (hi.voice || "—");
+                      const sp =
+                        hi.speed != null && !Number.isNaN(hi.speed)
+                          ? hi.speed
+                          : 1;
+                      return (
+                        <>
+                          <p>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              Provider
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {" "}
+                              — {hp?.name || hi.provider}
+                            </span>
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              Voice
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {" "}
+                              — {v}
+                            </span>
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              Speed
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {" "}
+                              — {sp.toFixed(1)}×
+                            </span>
+                          </p>
+                          <p>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              Time
+                            </span>
+                            <span className="text-slate-500 dark:text-slate-400">
+                              {" "}
+                              —{" "}
+                              {new Date(hi.timestamp).toLocaleString()}
+                            </span>
+                          </p>
+                          <p className="border-t border-violet-500/15 pt-2 dark:border-violet-400/10">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              Preview
+                            </span>
+                            <span className="mt-1 block text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                              {hi.textPreview}
+                            </span>
+                          </p>
+                        </>
+                      );
+                    })()}
+                  </motion.div>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="cursor-pointer border-violet-500/30">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    type="button"
+                    className="cursor-pointer bg-red-600 text-white hover:bg-red-600/90 dark:bg-red-600 dark:hover:bg-red-600/90"
+                    onClick={confirmRemoveHistoryItem}
+                  >
+                    Remove
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog
+              open={clearAllHistoryOpen}
+              onOpenChange={setClearAllHistoryOpen}
+            >
+              <AlertDialogContent className="border-violet-500/30 dark:bg-slate-950">
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear all conversions?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This removes every entry from Recent Conversions in this
+                    browser, revokes temporary audio links, and stops playback if a
+                    history clip is loaded. This cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                {clearAllHistoryOpen && history.length > 0 && (
+                  <motion.div
+                    key="clear-all-summary"
+                    initial={reduced ? false : { opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.24,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                    className="rounded-xl border border-violet-500/20 bg-slate-100/90 p-3 text-left text-xs dark:bg-slate-900/70"
+                  >
+                    <p className="font-semibold text-slate-800 dark:text-slate-200">
+                      {history.length}{" "}
+                      {history.length === 1 ? "entry" : "entries"} will be removed
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
+                      Your main player will be cleared if it was showing audio from
+                      this list.
+                    </p>
+                  </motion.div>
+                )}
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="cursor-pointer border-violet-500/30">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    type="button"
+                    className="cursor-pointer bg-red-600 text-white hover:bg-red-600/90 dark:bg-red-600 dark:hover:bg-red-600/90"
+                    onClick={confirmClearAllHistory}
+                  >
+                    Clear all
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             {/* Main card */}
             <motion.div
