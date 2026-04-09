@@ -32,9 +32,15 @@ def _resolved_api_key(form_value: Optional[str], env_name: str) -> Optional[str]
 
 app = FastAPI(title="Blog to Audio API")
 
+_cors_env = (os.getenv("CORS_ORIGINS") or "").strip()
+if _cors_env:
+    _cors_list = [o.strip() for o in _cors_env.split(",") if o.strip()]
+else:
+    _cors_list = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

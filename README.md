@@ -10,8 +10,8 @@
 
 Turn blog posts and text into natural-sounding audio. 6 TTS providers (2 always-free), multi-agent pipeline with real-time progress, text chunking, provider health dashboard, and conversion history.
 
-- **Live Demo:** []()
-- **Backend Live Demo:** []()
+- **Live Demo:** [https://blog-reader-tts.vercel.app/](https://blog-reader-tts.vercel.app/)
+- **Backend Live Demo:** [https://blog-audio-backend.arnobmahmud.com](https://blog-audio-backend.arnobmahmud.com)
 
 ---
 
