@@ -1,4 +1,4 @@
-# AI Blog Reader | Multi-Provider TTS with Multi-Agent Pipeline
+# Multi-Provider TTS AI Blog Reader - Python, React, Tailwind CSS, FastAPI, SSE Streaming, Multi-Agent Pipeline, Text Chunking, Conversion History FullStack Project
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -10,20 +10,21 @@
 
 Turn blog posts and text into natural-sounding audio. 6 TTS providers (2 always-free), multi-agent pipeline with real-time progress, text chunking, provider health dashboard, and conversion history.
 
-**Author:** [Arnob Mahmud](https://www.arnobmahmud.com) · **Contact:** [contact@arnobmahmud.com](mailto:contact@arnobmahmud.com)
+- **Live Demo:** []()
+- **Backend Live Demo:** []()
 
 ---
 
 ## Provider Comparison
 
-| Provider | Status | Free Tier | API Key | Quality | Speed Control |
-|----------|--------|-----------|---------|---------|---------------|
-| **Edge TTS** | Working | Unlimited | No | Neural (very good) | Yes |
-| **gTTS** | Working | Unlimited | No | Basic | No |
-| **ElevenLabs** | Partial | 10k credits/mo | Yes | Premium | No |
-| **Hugging Face** | Unavailable | N/A | Optional | N/A | No |
-| **Replicate** | Paid | Limited free runs | Yes | High | No |
-| **OpenAI** | Paid | $5 new account | Yes | Premium | Yes |
+| Provider         | Status      | Free Tier         | API Key  | Quality            | Speed Control |
+| ---------------- | ----------- | ----------------- | -------- | ------------------ | ------------- |
+| **Edge TTS**     | Working     | Unlimited         | No       | Neural (very good) | Yes           |
+| **gTTS**         | Working     | Unlimited         | No       | Basic              | No            |
+| **ElevenLabs**   | Partial     | 10k credits/mo    | Yes      | Premium            | No            |
+| **Hugging Face** | Unavailable | N/A               | Optional | N/A                | No            |
+| **Replicate**    | Paid        | Limited free runs | Yes      | High               | No            |
+| **OpenAI**       | Paid        | $5 new account    | Yes      | Premium            | Yes           |
 
 > See [docs/SITUATION.md](docs/SITUATION.md) for detailed provider status and troubleshooting.
 
@@ -61,20 +62,20 @@ Turn blog posts and text into natural-sounding audio. 6 TTS providers (2 always-
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **6 TTS Providers** | Edge TTS, gTTS (both free), ElevenLabs, Hugging Face, Replicate, OpenAI |
-| **Multi-Agent Pipeline** | 7-stage pipeline with SSE real-time progress (Extractor → Assembler) |
-| **Text Chunking** | Auto-splits long text at sentence boundaries, concatenates audio chunks |
-| **Provider Health** | Green/yellow/red status dots with per-provider notes |
-| **Dynamic Voices** | `/api/voices/{provider}` fetches available voices (Edge: 400+, ElevenLabs: user voices) |
-| **Conversion History** | localStorage-based history with playback and re-download |
-| **Pipeline Mode Toggle** | Switch between simple (fast) and pipeline (multi-agent) modes |
-| **OpenAI Model Selection** | Choose tts-1, tts-1-hd, or gpt-4o-mini-tts |
-| **Speed Control** | 0.5x-2.0x for Edge TTS and OpenAI |
-| **URL Extraction** | Scrape blog articles and convert to audio |
-| **Sample Texts** | Quick-test presets (news, poetry, technology, story) |
-| **Error Handling** | Provider-specific error messages with actionable suggestions |
+| Feature                    | Description                                                                             |
+| -------------------------- | --------------------------------------------------------------------------------------- |
+| **6 TTS Providers**        | Edge TTS, gTTS (both free), ElevenLabs, Hugging Face, Replicate, OpenAI                 |
+| **Multi-Agent Pipeline**   | 7-stage pipeline with SSE real-time progress (Extractor → Assembler)                    |
+| **Text Chunking**          | Auto-splits long text at sentence boundaries, concatenates audio chunks                 |
+| **Provider Health**        | Green/yellow/red status dots with per-provider notes                                    |
+| **Dynamic Voices**         | `/api/voices/{provider}` fetches available voices (Edge: 400+, ElevenLabs: user voices) |
+| **Conversion History**     | localStorage-based history with playback and re-download                                |
+| **Pipeline Mode Toggle**   | Switch between simple (fast) and pipeline (multi-agent) modes                           |
+| **OpenAI Model Selection** | Choose tts-1, tts-1-hd, or gpt-4o-mini-tts                                              |
+| **Speed Control**          | 0.5x-2.0x for Edge TTS and OpenAI                                                       |
+| **URL Extraction**         | Scrape blog articles and convert to audio                                               |
+| **Sample Texts**           | Quick-test presets (news, poetry, technology, story)                                    |
+| **Error Handling**         | Provider-specific error messages with actionable suggestions                            |
 
 ---
 
@@ -129,12 +130,12 @@ cd frontend && npm install
 
 ## Environment Variables
 
-| Variable | Required | Description | Free? |
-|----------|----------|-------------|-------|
-| `OPENAI_API_KEY` | For OpenAI | [platform.openai.com](https://platform.openai.com/api-keys) | $5 free credits |
-| `ELEVENLABS_API_KEY` | For ElevenLabs | [elevenlabs.io](https://elevenlabs.io/app/settings) | 10k credits/mo |
-| `REPLICATE_API_TOKEN` | For Replicate | [replicate.com](https://replicate.com/account/api-tokens) | Limited free runs |
-| `HF_API_KEY` | Optional | [huggingface.co](https://huggingface.co/settings/tokens) | Currently unavailable |
+| Variable              | Required       | Description                                                 | Free?                 |
+| --------------------- | -------------- | ----------------------------------------------------------- | --------------------- |
+| `OPENAI_API_KEY`      | For OpenAI     | [platform.openai.com](https://platform.openai.com/api-keys) | $5 free credits       |
+| `ELEVENLABS_API_KEY`  | For ElevenLabs | [elevenlabs.io](https://elevenlabs.io/app/settings)         | 10k credits/mo        |
+| `REPLICATE_API_TOKEN` | For Replicate  | [replicate.com](https://replicate.com/account/api-tokens)   | Limited free runs     |
+| `HF_API_KEY`          | Optional       | [huggingface.co](https://huggingface.co/settings/tokens)    | Currently unavailable |
 
 **Edge TTS and gTTS work without any API key.**
 
@@ -143,11 +144,13 @@ cd frontend && npm install
 ## How to Run
 
 **Backend:**
+
 ```bash
 uvicorn main:app --reload --port 8000
 ```
 
 **Frontend:**
+
 ```bash
 cd frontend && npm run dev
 ```
@@ -158,20 +161,21 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/api/providers` | Provider configs with status, badges, notes |
-| `GET` | `/api/provider-health` | Health status per provider (green/yellow/red) |
-| `GET` | `/api/voices/{provider}` | Dynamic voice list (query: `api_key`) |
-| `GET` | `/api/sample-texts` | Sample texts for quick testing |
-| `GET` | `/api/health` | Liveness check + provider count |
-| `GET` | `/api/audio/{file_id}` | Serve generated audio by ID |
-| `POST` | `/api/extract-text` | Extract text from URL |
-| `POST` | `/api/estimate` | Estimate audio duration |
-| `POST` | `/api/convert` | Simple mode: text → MP3 |
-| `POST` | `/api/convert-pipeline` | Pipeline mode: SSE stream with 7-agent progress |
+| Method | Endpoint                 | Description                                     |
+| ------ | ------------------------ | ----------------------------------------------- |
+| `GET`  | `/api/providers`         | Provider configs with status, badges, notes     |
+| `GET`  | `/api/provider-health`   | Health status per provider (green/yellow/red)   |
+| `GET`  | `/api/voices/{provider}` | Dynamic voice list (query: `api_key`)           |
+| `GET`  | `/api/sample-texts`      | Sample texts for quick testing                  |
+| `GET`  | `/api/health`            | Liveness check + provider count                 |
+| `GET`  | `/api/audio/{file_id}`   | Serve generated audio by ID                     |
+| `POST` | `/api/extract-text`      | Extract text from URL                           |
+| `POST` | `/api/estimate`          | Estimate audio duration                         |
+| `POST` | `/api/convert`           | Simple mode: text → MP3                         |
+| `POST` | `/api/convert-pipeline`  | Pipeline mode: SSE stream with 7-agent progress |
 
 **Simple convert:**
+
 ```bash
 curl -X POST http://localhost:8000/api/convert \
   -F "text=Hello world" -F "provider=edge-tts" \
@@ -179,10 +183,16 @@ curl -X POST http://localhost:8000/api/convert \
 ```
 
 **Pipeline convert (SSE):**
+l" --output audio.mp3
+
+````
+
+**Pipeline convert (SSE):**
+
 ```bash
 curl -N -X POST http://localhost:8000/api/convert-pipeline \
   -F "text=Hello world" -F "provider=edge-tts"
-```
+````
 
 ---
 
@@ -206,7 +216,7 @@ Progress streams via SSE (Server-Sent Events) with real-time stepper UI.
 
 [MIT License](https://opensource.org/licenses/MIT)
 
-## Happy Coding!
+## Happy Coding
 
 This is an **open-source project** — feel free to use, enhance, and extend!
 
