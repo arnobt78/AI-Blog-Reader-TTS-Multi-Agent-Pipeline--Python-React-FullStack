@@ -10,6 +10,10 @@ import { PageBackground } from "@/components/layout/PageBackground";
 import { BackendDocLinks } from "@/components/layout/BackendDocLinks";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { Button } from "@/components/ui/button";
+import { RippleButton } from "@/components/ui/RippleButton";
+import { RippleTabsTrigger } from "@/components/ui/ripple-tabs-trigger";
+import { Badge } from "@/components/ui/badge";
+import { AudioPlayerWithVisualizer } from "@/components/audio/AudioPlayerWithVisualizer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
 import { apiUrl } from "@/lib/api-base";
 import { cn } from "@/lib/utils";
@@ -73,6 +77,8 @@ import {
   Layers,
   ChevronDown,
   Trash2,
+  Share2,
+  ExternalLink,
 } from "lucide-react";
 
 const readerPageIconFrame =
@@ -702,6 +708,38 @@ export function ReaderPage() {
     }
   };
 
+  const handleShareAudio = useCallback(async () => {
+    if (!audioUrl) return;
+    try {
+      const res = await fetch(audioUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `ai-audio-${Date.now()}.mp3`, {
+        type: blob.type || "audio/mpeg",
+      });
+      const data: ShareData = {
+        files: [file],
+        title: "AI Blog Reader audio",
+      };
+      if (navigator.share && navigator.canShare?.(data)) {
+        await navigator.share(data);
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({
+          title: "AI Blog Reader",
+          text: "Generated speech audio from AI Blog Reader.",
+        });
+      }
+    } catch {
+      /* cancelled or unsupported */
+    }
+  }, [audioUrl]);
+
+  const handleOpenAudioTab = useCallback(() => {
+    if (!audioUrl) return;
+    window.open(audioUrl, "_blank", "noopener,noreferrer");
+  }, [audioUrl]);
+
   const loadSampleText = (sample: SampleText) => {
     setText(sample.text);
     setShowSamples(false);
@@ -715,12 +753,10 @@ export function ReaderPage() {
       currentProvider && selectedVoice
         ? (currentProvider.voices[selectedVoice] ?? selectedVoice)
         : selectedVoice || "your selected voice";
-    const genMode = pipelineMode ? "Pipeline" : "Simple";
     return {
       detail: `Playback uses ${providerLabel}, voice "${voiceLabel}".`,
-      modeLabel: `${genMode} mode`,
     };
-  }, [currentProvider, pipelineMode, selectedProvider, selectedVoice]);
+  }, [currentProvider, selectedProvider, selectedVoice]);
   const maxChars = currentProvider?.max_chars || 10000;
   const charCount = text.length;
   const isOverLimit = charCount > maxChars;
@@ -946,10 +982,10 @@ export function ReaderPage() {
                       aria-hidden
                     />
                     <p>
-                      History stores temporary browser links to your audio. After
-                      a full page reload those links usually stop working, so play
-                      may do nothing until you generate again. In the same session,
-                      play should work normally.
+                      History stores temporary browser links to your audio.
+                      After a full page reload those links usually stop working,
+                      so play may do nothing until you generate again. In the
+                      same session, play should work normally.
                     </p>
                   </div>
                   <div className="max-h-48 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5 scrollbar-history">
@@ -1072,8 +1108,7 @@ export function ReaderPage() {
                     {(() => {
                       const hi = historyItemToDelete;
                       const hp = providers[hi.provider];
-                      const v =
-                        hp?.voices[hi.voice] ?? (hi.voice || "—");
+                      const v = hp?.voices[hi.voice] ?? (hi.voice || "—");
                       const sp =
                         hi.speed != null && !Number.isNaN(hi.speed)
                           ? hi.speed
@@ -1113,8 +1148,7 @@ export function ReaderPage() {
                             </span>
                             <span className="text-slate-500 dark:text-slate-400">
                               {" "}
-                              —{" "}
-                              {new Date(hi.timestamp).toLocaleString()}
+                              — {new Date(hi.timestamp).toLocaleString()}
                             </span>
                           </p>
                           <p className="border-t border-violet-500/15 pt-2 dark:border-violet-400/10">
@@ -1154,8 +1188,8 @@ export function ReaderPage() {
                   <AlertDialogTitle>Clear all conversions?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This removes every entry from Recent Conversions in this
-                    browser, revokes temporary audio links, and stops playback if a
-                    history clip is loaded. This cannot be undone.
+                    browser, revokes temporary audio links, and stops playback
+                    if a history clip is loaded. This cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 {clearAllHistoryOpen && history.length > 0 && (
@@ -1171,11 +1205,12 @@ export function ReaderPage() {
                   >
                     <p className="font-semibold text-slate-800 dark:text-slate-200">
                       {history.length}{" "}
-                      {history.length === 1 ? "entry" : "entries"} will be removed
+                      {history.length === 1 ? "entry" : "entries"} will be
+                      removed
                     </p>
                     <p className="mt-1 text-[11px] leading-relaxed text-slate-600 dark:text-slate-400">
-                      Your main player will be cleared if it was showing audio from
-                      this list.
+                      Your main player will be cleared if it was showing audio
+                      from this list.
                     </p>
                   </motion.div>
                 )}
@@ -1227,7 +1262,8 @@ export function ReaderPage() {
                       </CardTitle>
                       <CardDescription className="mt-1 text-slate-600 dark:text-slate-300">
                         6 providers: Edge TTS, gTTS (free) + ElevenLabs, Hugging
-                        Face, Replicate, OpenAI
+                        Face, Replicate, OpenAI are ready to help you to scrape
+                        url, fetch text, and convert text to speech.
                       </CardDescription>
                     </div>
                   </motion.div>
@@ -1244,30 +1280,14 @@ export function ReaderPage() {
                       className="w-full"
                     >
                       <TabsList className="glow-tabs-shell grid h-auto w-full grid-cols-2 gap-1.5 rounded-2xl bg-slate-900/[0.06] p-1.5 dark:bg-white/[0.06]">
-                        <TabsTrigger
-                          value="text"
-                          className={cn(
-                            "gap-2 rounded-xl border-2 py-2.5 text-sm transition-all duration-200",
-                            "data-[state=inactive]:border-violet-400/40 data-[state=inactive]:bg-slate-900/[0.12] data-[state=inactive]:text-muted-foreground dark:data-[state=inactive]:border-violet-500/45 dark:data-[state=inactive]:bg-white/[0.06]",
-                            "data-[state=inactive]:hover:border-violet-400/55 data-[state=inactive]:hover:bg-violet-500/12 data-[state=inactive]:hover:text-slate-800 dark:data-[state=inactive]:hover:text-slate-100",
-                            "data-[state=active]:border-violet-400/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-[0_12px_32px_rgba(124,58,237,0.45)]",
-                          )}
-                        >
+                        <RippleTabsTrigger value="text">
                           <FileText className="h-4 w-4 shrink-0" />
                           Paste or type
-                        </TabsTrigger>
-                        <TabsTrigger
-                          value="url"
-                          className={cn(
-                            "gap-2 rounded-xl border-2 py-2.5 text-sm transition-all duration-200",
-                            "data-[state=inactive]:border-violet-400/40 data-[state=inactive]:bg-slate-900/[0.12] data-[state=inactive]:text-muted-foreground dark:data-[state=inactive]:border-violet-500/45 dark:data-[state=inactive]:bg-white/[0.06]",
-                            "data-[state=inactive]:hover:border-violet-400/55 data-[state=inactive]:hover:bg-violet-500/12 data-[state=inactive]:hover:text-slate-800 dark:data-[state=inactive]:hover:text-slate-100",
-                            "data-[state=active]:border-violet-400/50 data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-600 data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-[0_12px_32px_rgba(124,58,237,0.45)]",
-                          )}
-                        >
+                        </RippleTabsTrigger>
+                        <RippleTabsTrigger value="url">
                           <LinkIcon className="h-4 w-4 shrink-0" />
                           From the web
-                        </TabsTrigger>
+                        </RippleTabsTrigger>
                       </TabsList>
                     </motion.div>
 
@@ -1332,10 +1352,12 @@ export function ReaderPage() {
                             onChange={(e) => setUrl(e.target.value)}
                             className={`flex-1 ${fieldSurface}`}
                           />
-                          <Button
+                          <RippleButton
+                            type="button"
                             onClick={extractTextFromUrl}
-                            disabled={extracting}
-                            className="shrink-0 gap-2 bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md hover:from-violet-500 hover:to-purple-500 sm:px-6 cursor-pointer"
+                            disabled={extracting || !url.trim()}
+                            enableCtaShine
+                            className="h-10 shrink-0 rounded-md px-4 text-sm font-semibold text-white shadow-md transition-colors sm:h-10 sm:px-6 bg-gradient-to-r from-sky-500 via-violet-600 to-purple-600 hover:from-sky-400 hover:via-violet-500 hover:to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {extracting ? (
                               <>
@@ -1348,7 +1370,7 @@ export function ReaderPage() {
                                 Fetch article text
                               </>
                             )}
-                          </Button>
+                          </RippleButton>
                         </motion.div>
                       </motion.div>
                     </TabsContent>
@@ -1892,11 +1914,12 @@ export function ReaderPage() {
                     variants={stairItem}
                     className="w-full"
                   >
-                    <Button
+                    <RippleButton
+                      type="button"
                       onClick={handleConvert}
                       disabled={loading || !text.trim() || isOverLimit}
-                      className="h-12 w-full bg-gradient-to-r from-violet-600 to-purple-600 text-base font-semibold text-white shadow-lg ring-1 ring-white/25 hover:from-violet-500 hover:to-purple-500 cursor-pointer"
-                      size="lg"
+                      enableCtaShine
+                      className="h-12 w-full rounded-md text-base font-semibold text-white shadow-lg ring-1 ring-white/25 transition-colors bg-gradient-to-r from-sky-600 via-violet-700 to-purple-500 hover:from-sky-500 hover:via-violet-600 hover:to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {loading ? (
                         <>
@@ -1911,7 +1934,7 @@ export function ReaderPage() {
                           {pipelineMode ? "Run Pipeline" : "Generate Audio"}
                         </>
                       )}
-                    </Button>
+                    </RippleButton>
                   </motion.div>
 
                   {/* Audio result */}
@@ -1929,28 +1952,69 @@ export function ReaderPage() {
                             <Volume2 className="h-4 w-4 shrink-0" />
                             Your Audio is Ready!
                           </h3>
-                          <div className="space-y-0.5 pl-0 sm:pl-6">
-                            <p className="text-xs leading-relaxed text-white/80">
-                              {audioReadyMeta.detail} and use the{" "}
-                              {audioReadyMeta.modeLabel}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 pl-0 sm:pl-6">
+                            <p className="min-w-0 max-w-full text-xs leading-relaxed text-slate-700 dark:text-white/80">
+                              {audioReadyMeta.detail}
                             </p>
+                            <Badge
+                              variant="success"
+                              className="shrink-0 border-emerald-600/30 bg-emerald-600/15 text-[10px] font-semibold text-emerald-900 sm:text-xs dark:text-emerald-200"
+                            >
+                              {pipelineMode ? "Pipeline Mode" : "Simple Mode"}
+                            </Badge>
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 border-violet-500/35 bg-violet-500/15 text-[10px] font-semibold text-violet-900 tabular-nums sm:text-xs dark:text-violet-200"
+                            >
+                              {speed.toFixed(1)}× speed
+                            </Badge>
                           </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handleDownload}
-                          className="shrink-0 self-start border-green-300 text-green-500 cursor-pointer sm:mt-0.5"
-                        >
-                          <Download className="h-4 w-4" />
-                          Download
-                        </Button>
+                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 self-start sm:max-w-none">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownload}
+                            className="border-green-300 text-green-600 cursor-pointer dark:text-green-400"
+                          >
+                            <Download className="h-4 w-4" />
+                            Download
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleShareAudio}
+                            title="Share audio"
+                            className="border-green-300/80 text-green-600 cursor-pointer dark:text-green-400"
+                          >
+                            <Share2 className="h-4 w-4" />
+                            <span className="hidden sm:inline">Share</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleOpenAudioTab}
+                            title="Open audio in new tab"
+                            className="border-green-300/80 text-green-600 cursor-pointer dark:text-green-400"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            <span className="hidden lg:inline">Open</span>
+                          </Button>
+                        </div>
                       </div>
                       <audio
                         ref={audioRef}
-                        controls
                         src={audioUrl}
-                        className="w-full"
+                        playsInline
+                        preload="metadata"
+                        className="sr-only"
+                      />
+                      <AudioPlayerWithVisualizer
+                        audioRef={audioRef}
+                        src={audioUrl}
+                        reducedMotion={reduced}
                       />
                     </motion.div>
                   )}

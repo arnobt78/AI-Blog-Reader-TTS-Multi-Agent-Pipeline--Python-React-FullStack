@@ -237,9 +237,53 @@ def extract_text_from_url(url: str) -> str:
     soup = BeautifulSoup(response.text, "html.parser")
     for element in soup(["script", "style", "nav", "footer", "header", "aside"]):
         element.decompose()
+    parts: list[str] = []
+    if soup.title:
+        tt = soup.title.get_text(strip=True)
+        if tt:
+            parts.append(tt)
     main_content = soup.find("article") or soup.find("main") or soup.find("body")
-    paragraphs = (main_content or soup).find_all("p")
-    return " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+    root = main_content or soup
+    primary_tags = [
+        "h1", "h2", "h3", "h4", "h5", "h6",
+        "p", "li", "blockquote", "figcaption", "pre", "summary",
+        "dt", "dd", "th", "td", "cite", "address",
+    ]
+    for el in root.find_all(primary_tags, recursive=True):
+        t = el.get_text(separator=" ", strip=True)
+        if t:
+            parts.append(t)
+    for el in root.find_all("span", recursive=True):
+        if el.find_parent("p"):
+            continue
+        if el.find_parent(re.compile(r"^h[1-6]$")):
+            continue
+        if el.find_parent(["li", "blockquote", "td", "th", "figcaption"]):
+            continue
+        t = el.get_text(separator=" ", strip=True)
+        if t and len(t) > 1:
+            parts.append(t)
+    for el in root.find_all(True, recursive=True):
+        cls = el.get("class")
+        if not cls:
+            continue
+        blob = " ".join(str(c) for c in cls).lower()
+        if not any(k in blob for k in ("badge", "chip", "pill", "tag-", "label-")):
+            continue
+        if el.name in ("script", "style", "svg"):
+            continue
+        t = el.get_text(separator=" ", strip=True)
+        if t and len(t) <= 240:
+            parts.append(t)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for t in parts:
+        t = " ".join(t.split())
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        ordered.append(t)
+    return " ".join(ordered)
 
 
 def estimate_duration(text: str, speed: float = 1.0) -> dict:
