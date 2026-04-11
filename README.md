@@ -14,7 +14,13 @@ A **full-stack learning and portfolio project** that turns long-form text and bl
 - **Live Demo:** [https://blog-reader-tts.vercel.app/](https://blog-reader-tts.vercel.app/)
 - **Backend Live Demo:** [https://blog-audio-backend.arnobmahmud.com](https://blog-audio-backend.arnobmahmud.com)
 
----
+![Image 1](https://github.com/user-attachments/assets/5fa54496-b3b5-40d9-9a35-43022733f97b)
+![Image 2](https://github.com/user-attachments/assets/3a4b492d-d2ee-4d17-94c8-0a861771f886)
+![Image 3](https://github.com/user-attachments/assets/19a46233-3a3d-4fa1-959a-a998abfce408)
+![Image 4](https://github.com/user-attachments/assets/23d3878b-7d08-4bbd-9f54-40c5a93789f4)
+![Image 5](https://github.com/user-attachments/assets/f8f5bbda-e4f7-4128-82d2-2643edf85467)
+![Image 6](https://github.com/user-attachments/assets/e1a08f27-2e38-4d8b-96c5-c890f97a0e02)
+![Image 7](https://github.com/user-attachments/assets/0accac96-7637-4a65-b667-6b775ec579b5)
 
 ## Table of contents
 
