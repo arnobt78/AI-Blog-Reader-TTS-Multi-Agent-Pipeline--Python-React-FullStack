@@ -80,6 +80,7 @@ import {
   Share2,
   ExternalLink,
 } from "lucide-react";
+import { toast } from "sonner";
 
 const readerPageIconFrame =
   "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-violet-500/55 bg-violet-500/10 text-violet-600 shadow-sm ring-1 ring-violet-400/30 dark:border-violet-400/50 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/25 sm:h-14 sm:w-14";
@@ -252,6 +253,7 @@ export function ReaderPage() {
   const [audioPlaying, setAudioPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
   const pendingHistoryPlayRef = useRef(false);
+  const genToastIdRef = useRef<string | number | undefined>(undefined);
   const reduced = usePrefersReducedMotion();
 
   const voiceAvailabilityNote = useMemo(() => {
@@ -372,6 +374,34 @@ export function ReaderPage() {
     }
   };
 
+  const getGenerationSummary = useCallback(() => {
+    const p = providers[selectedProvider];
+    const voiceName =
+      (p?.voices && selectedVoice && p.voices[selectedVoice]) ||
+      selectedVoice ||
+      "—";
+    const lim = p?.max_chars ?? 10000;
+    const parts = [
+      p?.name ?? selectedProvider,
+      `Voice: ${voiceName}`,
+      `Speed: ${speed}×`,
+      pipelineMode ? "Pipeline" : "Simple mode",
+    ];
+    if (selectedProvider === "openai") parts.push(`Model: ${selectedModel}`);
+    parts.push(
+      `Text: ${text.length.toLocaleString()} / ${lim.toLocaleString()} chars`,
+    );
+    return parts.join(" · ");
+  }, [
+    providers,
+    selectedProvider,
+    selectedVoice,
+    speed,
+    pipelineMode,
+    selectedModel,
+    text.length,
+  ]);
+
   const addToHistory = useCallback(
     (audioUrl: string) => {
       const item: HistoryItem = {
@@ -467,6 +497,10 @@ export function ReaderPage() {
       setAudioUrl(null);
       URL.revokeObjectURL(removed.audioUrl);
     }
+    toast.success("History entry removed", {
+      description: removed.textPreview,
+      icon: <Trash2 className="h-4 w-4 shrink-0 text-slate-600" />,
+    });
   }, [historyItemToDelete, audioUrl]);
 
   const confirmClearAllHistory = useCallback(() => {
@@ -480,6 +514,11 @@ export function ReaderPage() {
     });
     audioRef.current?.pause();
     setAudioUrl(null);
+    toast.success("All history cleared", {
+      description:
+        "Saved clips were removed from this browser for this device.",
+      icon: <Trash2 className="h-4 w-4 shrink-0 text-slate-600" />,
+    });
   }, []);
 
   const extractTextFromUrl = async () => {
@@ -490,8 +529,16 @@ export function ReaderPage() {
         message: "Please enter a blog URL.",
         suggestion: "Paste a valid URL above.",
       });
+      toast.error("No URL", {
+        description: "Paste a valid blog URL above, then fetch again.",
+        icon: <LinkIcon className="h-4 w-4 shrink-0 text-amber-600" />,
+      });
       return;
     }
+    const tid = toast.loading("Fetching article text", {
+      description: url.length > 140 ? `${url.slice(0, 140)}…` : url,
+      icon: <Globe2 className="h-4 w-4 shrink-0 text-violet-600" />,
+    });
     setExtracting(true);
     setError(null);
     try {
@@ -502,18 +549,34 @@ export function ReaderPage() {
         body: formData,
       });
       if (!response.ok) {
-        setError(await parseErrorResponse(response));
+        const err = await parseErrorResponse(response);
+        setError(err);
+        toast.error(err.title, {
+          id: tid,
+          description: `${err.message} — ${err.suggestion}`,
+          icon: <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />,
+        });
         return;
       }
       const data = await response.json();
       setText(data.text);
       setInputMode("text");
+      toast.success("Article text loaded", {
+        id: tid,
+        description: `${(data.text as string).length.toLocaleString()} characters · switched to the Text tab.`,
+        icon: <FileText className="h-4 w-4 shrink-0 text-emerald-600" />,
+      });
     } catch {
       setError({
         error: true,
         title: "Network Error",
         message: "Failed to connect.",
         suggestion: "Check your connection.",
+      });
+      toast.error("Network error", {
+        id: tid,
+        description: "Could not reach the server to extract text.",
+        icon: <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />,
       });
     } finally {
       setExtracting(false);
@@ -528,8 +591,19 @@ export function ReaderPage() {
         message: "Please enter text to convert.",
         suggestion: "Paste text or extract from URL.",
       });
+      toast.error("No text to convert", {
+        description:
+          "Add text in the editor or fetch an article from a URL first.",
+        icon: <Type className="h-4 w-4 shrink-0 text-amber-600" />,
+      });
       return;
     }
+    genToastIdRef.current = toast.loading("Generating audio...", {
+      description: getGenerationSummary(),
+      icon: (
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-600" />
+      ),
+    });
     setLoading(true);
     setError(null);
     setAudioUrl(null);
@@ -557,13 +631,32 @@ export function ReaderPage() {
         body: formData,
       });
       if (!response.ok) {
-        setError(await parseErrorResponse(response));
+        const err = await parseErrorResponse(response);
+        setError(err);
+        const tid = genToastIdRef.current;
+        if (tid != null) {
+          toast.error(err.title, {
+            id: tid,
+            description: `${err.message} — ${err.suggestion}`,
+            icon: <XCircle className="h-4 w-4 shrink-0 text-red-600" />,
+          });
+          genToastIdRef.current = undefined;
+        }
         return;
       }
       const blob = await response.blob();
       const urlBlob = URL.createObjectURL(blob);
       setAudioUrl(urlBlob);
       addToHistory(urlBlob);
+      const tid = genToastIdRef.current;
+      if (tid != null) {
+        toast.success("Audio ready (simple mode)", {
+          id: tid,
+          description: getGenerationSummary(),
+          icon: <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />,
+        });
+        genToastIdRef.current = undefined;
+      }
     } catch {
       setError({
         error: true,
@@ -571,6 +664,15 @@ export function ReaderPage() {
         message: "Could not reach the server.",
         suggestion: "Check your connection.",
       });
+      const tid = genToastIdRef.current;
+      if (tid != null) {
+        toast.error("Connection failed", {
+          id: tid,
+          description: "Could not reach the server while generating audio.",
+          icon: <XCircle className="h-4 w-4 shrink-0 text-red-600" />,
+        });
+        genToastIdRef.current = undefined;
+      }
     } finally {
       setLoading(false);
     }
@@ -583,6 +685,9 @@ export function ReaderPage() {
     > = {};
     PIPELINE_AGENTS.forEach((a) => (initSteps[a] = { status: "pending" }));
     setPipelineSteps(initSteps);
+
+    let pipelineGotAudio = false;
+    let pipelineFatal = false;
 
     try {
       const formData = new FormData();
@@ -601,7 +706,17 @@ export function ReaderPage() {
       });
 
       if (!response.ok) {
-        setError(await parseErrorResponse(response));
+        const err = await parseErrorResponse(response);
+        setError(err);
+        const tid = genToastIdRef.current;
+        if (tid != null) {
+          toast.error(err.title, {
+            id: tid,
+            description: `${err.message} — ${err.suggestion}`,
+            icon: <XCircle className="h-4 w-4 shrink-0 text-red-600" />,
+          });
+          genToastIdRef.current = undefined;
+        }
         setLoading(false);
         return;
       }
@@ -616,6 +731,15 @@ export function ReaderPage() {
           message: "Could not read pipeline stream.",
           suggestion: "Try simple mode.",
         });
+        const tid = genToastIdRef.current;
+        if (tid != null) {
+          toast.error("Stream error", {
+            id: tid,
+            description: "Could not read the pipeline stream. Try simple mode.",
+            icon: <XCircle className="h-4 w-4 shrink-0 text-red-600" />,
+          });
+          genToastIdRef.current = undefined;
+        }
         setLoading(false);
         return;
       }
@@ -649,17 +773,30 @@ export function ReaderPage() {
                 },
               }));
             } else if (evt.event === "complete" && evt.audio_url) {
+              pipelineGotAudio = true;
               const audioResp = await fetch(apiUrl(evt.audio_url));
               const blob = await audioResp.blob();
               const urlBlob = URL.createObjectURL(blob);
               setAudioUrl(urlBlob);
               addToHistory(urlBlob);
+              const tid = genToastIdRef.current;
+              if (tid != null) {
+                toast.success("Audio ready (pipeline)", {
+                  id: tid,
+                  description: getGenerationSummary(),
+                  icon: (
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  ),
+                });
+                genToastIdRef.current = undefined;
+              }
             } else if (evt.event === "agent_error" && evt.agent) {
               setPipelineSteps((prev) => ({
                 ...prev,
                 [evt.agent!]: { status: "error", logs: evt.logs },
               }));
             } else if (evt.event === "error") {
+              pipelineFatal = true;
               setPipelineSteps((prev) => {
                 const next = { ...prev };
                 const running = Object.entries(next).find(
@@ -678,12 +815,41 @@ export function ReaderPage() {
                 status_code: evt.status_code,
                 provider: evt.provider,
               });
+              const tid = genToastIdRef.current;
+              if (tid != null) {
+                toast.error(evt.title || "Pipeline error", {
+                  id: tid,
+                  description: [
+                    evt.message,
+                    evt.suggestion || "Try simple mode or Edge TTS.",
+                  ]
+                    .filter(Boolean)
+                    .join(" — "),
+                  icon: <XCircle className="h-4 w-4 shrink-0 text-red-600" />,
+                });
+                genToastIdRef.current = undefined;
+              }
               setLoading(false);
             }
           } catch {
             /* skip malformed */
           }
         }
+      }
+
+      if (
+        !pipelineGotAudio &&
+        !pipelineFatal &&
+        genToastIdRef.current != null
+      ) {
+        const tid = genToastIdRef.current;
+        genToastIdRef.current = undefined;
+        toast.warning("Pipeline finished without audio", {
+          id: tid,
+          description:
+            "No final audio file was returned. Try simple mode or another provider.",
+          icon: <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />,
+        });
       }
     } catch {
       setError({
@@ -692,24 +858,49 @@ export function ReaderPage() {
         message: "Pipeline stream disconnected.",
         suggestion: "Check connection or try simple mode.",
       });
+      const tid = genToastIdRef.current;
+      if (tid != null) {
+        toast.error("Pipeline disconnected", {
+          id: tid,
+          description: "The pipeline stream closed unexpectedly.",
+          icon: <XCircle className="h-4 w-4 shrink-0 text-red-600" />,
+        });
+        genToastIdRef.current = undefined;
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleDownload = () => {
-    if (audioUrl) {
-      const a = document.createElement("a");
-      a.href = audioUrl;
-      a.download = `ai_audio_${Date.now()}.mp3`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    if (!audioUrl) {
+      toast.error("Nothing to download", {
+        description: "Generate audio first, then download the MP3.",
+        icon: <Download className="h-4 w-4 shrink-0 text-amber-600" />,
+      });
+      return;
     }
+    const name = `ai_audio_${Date.now()}.mp3`;
+    const a = document.createElement("a");
+    a.href = audioUrl;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast.success("Download started", {
+      description: `${name} · ${getGenerationSummary()}`,
+      icon: <Download className="h-4 w-4 shrink-0 text-emerald-600" />,
+    });
   };
 
   const handleShareAudio = useCallback(async () => {
-    if (!audioUrl) return;
+    if (!audioUrl) {
+      toast.error("Nothing to share", {
+        description: "Generate audio first, then use Share.",
+        icon: <Share2 className="h-4 w-4 shrink-0 text-amber-600" />,
+      });
+      return;
+    }
     try {
       const res = await fetch(audioUrl);
       const blob = await res.blob();
@@ -722,6 +913,10 @@ export function ReaderPage() {
       };
       if (navigator.share && navigator.canShare?.(data)) {
         await navigator.share(data);
+        toast.success("Shared audio file", {
+          description: getGenerationSummary(),
+          icon: <Share2 className="h-4 w-4 shrink-0 text-emerald-600" />,
+        });
         return;
       }
       if (navigator.share) {
@@ -729,11 +924,26 @@ export function ReaderPage() {
           title: "AI Blog Reader",
           text: "Generated speech audio from AI Blog Reader.",
         });
+        toast.success("Share sheet opened", {
+          description: "If files are not supported, use Download instead.",
+          icon: <Share2 className="h-4 w-4 shrink-0 text-emerald-600" />,
+        });
+        return;
       }
-    } catch {
-      /* cancelled or unsupported */
+      toast.message("Sharing not available", {
+        description:
+          "This browser cannot open the native share sheet. Use Download.",
+        icon: <Share2 className="h-4 w-4 shrink-0 text-slate-600" />,
+      });
+    } catch (e: unknown) {
+      const err = e as { name?: string };
+      if (err?.name === "AbortError") return;
+      toast.error("Share failed", {
+        description: "Could not share this clip from the browser.",
+        icon: <Share2 className="h-4 w-4 shrink-0 text-red-600" />,
+      });
     }
-  }, [audioUrl]);
+  }, [audioUrl, getGenerationSummary]);
 
   const handleOpenAudioTab = useCallback(() => {
     if (!audioUrl) return;
@@ -1035,9 +1245,34 @@ export function ReaderPage() {
                               </p>
                             </div>
                             <div className="flex shrink-0 flex-col items-end gap-1">
-                              <span className="text-[10px] tabular-nums text-slate-500">
-                                {new Date(item.timestamp).toLocaleTimeString()}
-                              </span>
+                              <time
+                                dateTime={new Date(
+                                  item.timestamp,
+                                ).toISOString()}
+                                className="text-right text-[10px] leading-tight"
+                              >
+                                <span className="block text-slate-400/90">
+                                  {new Date(item.timestamp).toLocaleDateString(
+                                    undefined,
+                                    {
+                                      weekday: "short",
+                                      month: "short",
+                                      day: "numeric",
+                                      year: "numeric",
+                                    },
+                                  )}
+                                </span>
+                                <span className="block tabular-nums text-slate-500">
+                                  {new Date(item.timestamp).toLocaleTimeString(
+                                    undefined,
+                                    {
+                                      hour: "numeric",
+                                      minute: "2-digit",
+                                      second: "2-digit",
+                                    },
+                                  )}
+                                </span>
+                              </time>
                               <div className="flex items-center gap-0.5">
                                 {item.audioUrl ? (
                                   <button
