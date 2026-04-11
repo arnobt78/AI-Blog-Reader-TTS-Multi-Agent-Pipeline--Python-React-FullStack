@@ -14,6 +14,7 @@ Educational reading order (walk the file top → bottom):
 import json
 import re
 import time
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 import requests
@@ -43,8 +44,58 @@ def _resolved_api_key(form_value: Optional[str], env_name: str) -> Optional[str]
     return raw or None
 
 
+# Ephemeral MP3 workspace for both simple (`audio_*.mp3`) and pipeline (`pipeline_*.mp3`, chunk_*) outputs.
+AUDIO_DIR = "audio_files"
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+
+def _audio_cleanup_expired_files() -> None:
+    raw_h = (os.getenv("AUDIO_CLEANUP_MAX_AGE_HOURS") or "12").strip()
+    try:
+        max_age_h = max(1.0, float(raw_h))
+    except ValueError:
+        max_age_h = 12.0
+    cutoff = time.time() - max_age_h * 3600
+    base = Path(AUDIO_DIR)
+    if not base.is_dir():
+        return
+    for p in base.iterdir():
+        if not p.is_file():
+            continue
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
+async def _audio_cleanup_loop() -> None:
+    raw_m = (os.getenv("AUDIO_CLEANUP_INTERVAL_MINUTES") or "60").strip()
+    try:
+        interval_s = max(60.0, float(raw_m) * 60.0)
+    except ValueError:
+        interval_s = 3600.0
+    while True:
+        try:
+            await run_in_threadpool(_audio_cleanup_expired_files)
+        except Exception:
+            pass
+        await asyncio.sleep(interval_s)
+
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    task = asyncio.create_task(_audio_cleanup_loop())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
 # FastAPI application; interactive OpenAPI lives at /docs when this process is reachable.
-app = FastAPI(title="Blog to Audio API")
+app = FastAPI(title="Blog to Audio API", lifespan=_app_lifespan)
 
 # When CORS_ORIGINS is unset, allow "*" for frictionless local dev; set explicit origins in production (see README).
 _cors_env = (os.getenv("CORS_ORIGINS") or "").strip()
@@ -60,10 +111,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Ephemeral MP3 workspace for both simple (`audio_*.mp3`) and pipeline (`pipeline_*.mp3`, chunk_*) outputs.
-AUDIO_DIR = "audio_files"
-os.makedirs(AUDIO_DIR, exist_ok=True)
 
 # ============== Error Helpers ==============
 

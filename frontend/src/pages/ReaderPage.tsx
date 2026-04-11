@@ -494,6 +494,15 @@ export function ReaderPage() {
     audioRef.current?.pause();
   }, []);
 
+  const handleAudioPlaybackError = useCallback(() => {
+    toast.error("Could not play this audio", {
+      id: "audio-playback-error",
+      description:
+        "Blob links often break after a full page reload. Server files are removed after about 12 hours, so a 404 is expected—generate again. History rows stay in the list until you remove or clear them.",
+      icon: <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />,
+    });
+  }, []);
+
   const confirmRemoveHistoryItem = useCallback(() => {
     if (!historyItemToDelete) return;
     const removed = historyItemToDelete;
@@ -1206,10 +1215,13 @@ export function ReaderPage() {
                       aria-hidden
                     />
                     <p>
-                      History stores temporary browser links to your audio.
-                      After a full page reload those links usually stop working,
-                      so play may do nothing until you generate again. In the
-                      same session, play should work normally.
+                      History stores temporary links in this browser
+                      (localStorage)—the list stays until you clear it or remove
+                      rows, so it does not empty by itself after 12 hours. In
+                      the same session, play usually works; after a full reload,
+                      blob links often stop working. Server-hosted clips are
+                      auto-deleted after about 12 hours—play may 404 and that is
+                      expected; generate again for a fresh file.
                     </p>
                   </div>
                   <div className="max-h-48 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5 scrollbar-history">
@@ -2259,6 +2271,7 @@ export function ReaderPage() {
                         playsInline
                         preload="metadata"
                         className="sr-only"
+                        onError={handleAudioPlaybackError}
                       />
                       <AudioPlayerWithVisualizer
                         audioRef={audioRef}
