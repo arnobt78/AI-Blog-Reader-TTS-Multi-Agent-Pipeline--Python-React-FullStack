@@ -1,0 +1,8 @@
+{
+  "name": "blog-to-audio",
+  "private": true,
+  "description": "Multi-Provider TTS AI Blog Reader — FastAPI + React (see README)",
+  "scripts": {
+    "lint": "npm run lint --prefix frontend"
+  }
+}

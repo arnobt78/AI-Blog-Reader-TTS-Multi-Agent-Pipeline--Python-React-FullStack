@@ -1,5 +1,6 @@
 /**
  * Opens FastAPI Swagger in a new tab; health opens the in-app dashboard at `/health`.
+ * Uses `backendDocsUrl()` so local dev still reaches `:8000/docs` even though only `/api` is proxied by Vite.
  */
 import { Activity, BookOpen } from "lucide-react";
 import { Link } from "react-router-dom";

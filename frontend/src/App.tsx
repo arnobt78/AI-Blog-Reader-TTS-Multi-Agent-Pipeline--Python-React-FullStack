@@ -1,6 +1,7 @@
 /**
  * Top-level SPA: React Router + shared width shell (`RootLayout`).
  * `/` = portfolio intro; `/app` = AI Blog Reader tool (existing functionality).
+ * `/health` surfaces backend JSON for demos; unknown paths redirect home to avoid dead-end URLs on static hosting.
  */
 import * as Sentry from '@sentry/react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
@@ -11,6 +12,7 @@ import HealthPage from '@/pages/HealthPage'
 import { ReaderPage } from '@/pages/ReaderPage'
 
 export default function App() {
+  // ErrorBoundary wraps the whole router so runtime render errors still show the fallback UI + Sentry event.
   return (
     <Sentry.ErrorBoundary
       fallback={({ resetError }) => (

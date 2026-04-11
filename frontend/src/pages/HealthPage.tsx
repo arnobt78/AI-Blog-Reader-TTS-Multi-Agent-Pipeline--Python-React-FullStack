@@ -1,5 +1,6 @@
 /**
  * Dashboard for GET /api/health + /api/provider-health (same-origin or VITE_API_BASE_URL).
+ * Educational use: compare `resolvedApiOrigin` vs `VITE_API_BASE_URL` when debugging CORS/proxy issues between Vercel and Coolify.
  */
 import {
   useCallback,
@@ -65,6 +66,7 @@ const STATUS_DOT: Record<string, string> = {
   gray: "bg-slate-400",
 };
 
+// Fixed slot order keeps the grid stable even if the API omits a provider key temporarily.
 const PROVIDER_SLOTS = [
   "edge-tts",
   "gtts",
@@ -117,6 +119,7 @@ export default function HealthPage() {
     setLoading(true);
     setError(null);
     try {
+      // Parallel fetch keeps the summary cards in sync (one round-trip latency).
       const [hRes, pRes] = await Promise.all([
         fetch(apiUrl("/api/health")),
         fetch(apiUrl("/api/provider-health")),

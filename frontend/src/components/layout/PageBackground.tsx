@@ -12,6 +12,7 @@ type PageBackgroundProps = {
 /**
  * Shared full-viewport layers: cover photo + radial vignette + optional rotating center art.
  * Uses `fixed` positioning so it works the same on intro and reader routes.
+ * Swap `orbitClassName` per page (`intro-orbit` vs `reader-orbit`) to reuse one component with different CSS keyframes in `index.css`.
  */
 export function PageBackground({
   bgImage = '/bg-images/bg-11.png',

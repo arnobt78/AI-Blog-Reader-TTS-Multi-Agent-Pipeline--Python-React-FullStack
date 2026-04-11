@@ -9,6 +9,7 @@ type RootLayoutProps = {
 
 /**
  * Portfolio shell: max-w ~9xl (96rem), `min-h-dvh` column with main growing and footer at bottom center.
+ * Every routed page is wrapped here — reuse this layout in forks to keep consistent gutters + footer placement.
  */
 export function RootLayout({ children, className }: RootLayoutProps) {
   return (

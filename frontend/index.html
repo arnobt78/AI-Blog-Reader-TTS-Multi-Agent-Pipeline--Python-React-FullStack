@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/favicon.ico" />
     <link
       rel="preload"
       href="/fonts/dm-sans-latin-var-normal.woff2"
@@ -35,52 +36,94 @@
     <link rel="preload" href="/logo.svg" as="image" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Primary Meta Tags / SEO -->
-    <title>AI Blog Reader — Portfolio & Text-to-Speech Demo</title>
+    <!-- Primary Meta Tags / SEO (live app: README demo URLs) -->
+    <link rel="canonical" href="https://blog-reader-tts.vercel.app/" />
+    <link rel="author" href="https://www.arnobmahmud.com" />
+    <meta name="application-name" content="Multi-Provider TTS AI Blog Reader" />
+    <title>Multi-Provider TTS AI Blog Reader — FastAPI, React, SSE &amp; 6 TTS Providers (Live Demo)</title>
     <meta
       name="title"
-      content="AI Blog Reader — FastAPI + React showcase | Arnob Mahmud"
+      content="Multi-Provider TTS AI Blog Reader — Python, FastAPI, React, Tailwind, SSE pipeline"
     />
     <meta
       name="description"
-      content="Portfolio showcase: convert blogs and pasted text to speech with Edge TTS, ElevenLabs, Hugging Face, and OpenAI. FastAPI backend, React + TypeScript + Vite frontend."
+      content="Turn blog posts and pasted text into natural-sounding MP3 audio. Six TTS providers (Edge TTS, gTTS, ElevenLabs, Hugging Face, Replicate, OpenAI), multi-agent SSE pipeline, chunking, provider health, and conversion history. Live demo on Vercel; FastAPI backend API."
     />
+    <meta name="author" content="Arnob Mahmud" />
+    <meta name="publisher" content="Arnob Mahmud" />
     <meta
-      name="author"
-      content="Arnob Mahmud (https://www.arnobmahmud.com, contact@arnobmahmud.com)"
+      name="creator"
+      content="Arnob Mahmud — https://www.arnobmahmud.com — contact@arnobmahmud.com"
     />
     <meta
       name="keywords"
-      content="AI blog reader, portfolio, FastAPI, React, TypeScript, Vite, text to speech, TTS, Edge TTS, ElevenLabs, OpenAI, Arnob Mahmud"
+      content="text to speech, TTS, blog to audio, AI blog reader, FastAPI, Python, React, TypeScript, Vite, Tailwind CSS, SSE streaming, multi-agent pipeline, Edge TTS, gTTS, ElevenLabs, Hugging Face, Replicate, OpenAI, conversion history, Arnob Mahmud, portfolio, full stack"
     />
     <meta name="robots" content="index, follow" />
     <meta name="theme-color" content="#0f172a" />
+    <meta property="og:locale" content="en_US" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
     <meta
       property="og:title"
-      content="AI Blog Reader — Portfolio & Text-to-Speech Demo"
+      content="Multi-Provider TTS AI Blog Reader — Live demo (FastAPI + React)"
     />
     <meta
       property="og:description"
-      content="Full-stack showcase: URL extract, multi-provider TTS, MP3 download — FastAPI + React + TypeScript."
+      content="URL extraction, six TTS providers, real-time SSE pipeline progress, chunking, health dashboard, and MP3 download — React + TypeScript + Vite frontend, FastAPI backend."
     />
-    <meta property="og:image" content="/favicon.ico" />
-    <meta property="og:url" content="https://www.arnobmahmud.com" />
-    <meta property="og:site_name" content="Blog to Audio" />
+    <meta
+      property="og:image"
+      content="https://blog-reader-tts.vercel.app/bg-images/bg-11.png"
+    />
+    <meta property="og:image:alt" content="Multi-Provider TTS AI Blog Reader app preview" />
+    <meta property="og:url" content="https://blog-reader-tts.vercel.app/" />
+    <meta
+      property="og:site_name"
+      content="Multi-Provider TTS AI Blog Reader (blog-to-audio)"
+    />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:title"
-      content="AI Blog Reader — Portfolio & Text-to-Speech Demo"
+      content="Multi-Provider TTS AI Blog Reader — FastAPI + React TTS demo"
     />
     <meta
       name="twitter:description"
-      content="Full-stack showcase: URL extract, multi-provider TTS, MP3 download — FastAPI + React + TypeScript."
+      content="Six providers, SSE pipeline, chunking, and history — try the live demo or self-host the FastAPI + Vite stack."
     />
-    <meta name="twitter:image" content="/favicon.ico" />
+    <meta
+      name="twitter:image"
+      content="https://blog-reader-tts.vercel.app/bg-images/bg-11.png"
+    />
+    <meta name="twitter:image:alt" content="Multi-Provider TTS AI Blog Reader app preview" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Multi-Provider TTS AI Blog Reader",
+        "alternateName": "blog-to-audio",
+        "description": "Turn blog posts and text into natural-sounding audio with multiple TTS providers, a FastAPI backend, and a React + TypeScript + Vite frontend with SSE pipeline progress.",
+        "url": "https://blog-reader-tts.vercel.app/",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "Web",
+        "author": {
+          "@type": "Person",
+          "name": "Arnob Mahmud",
+          "url": "https://www.arnobmahmud.com",
+          "email": "contact@arnobmahmud.com"
+        },
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "isAccessibleForFree": true
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

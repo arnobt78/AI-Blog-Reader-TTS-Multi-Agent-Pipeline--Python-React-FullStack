@@ -1,5 +1,6 @@
 /**
  * Portfolio landing: full-viewport column, shared PageBackground, motion, CTA with shine + ripple.
+ * This route (`/`) is intentionally separate from `/app` so you can showcase the project narrative without loading the heavy reader UI immediately.
  */
 import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";

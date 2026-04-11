@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+// Central typings for `import.meta.env.*` — keeps TS aware of Vite-prefixed vars used across the app.
 
 /** Injected in vite.config.ts from VERCEL_GIT_COMMIT_SHA or VITE_SENTRY_RELEASE. */
 declare const __SENTRY_RELEASE__: string

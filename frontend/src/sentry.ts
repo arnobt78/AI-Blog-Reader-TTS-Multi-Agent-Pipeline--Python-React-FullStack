@@ -1,6 +1,7 @@
 /**
  * Sentry browser SDK — init before React root. No-op without VITE_SENTRY_DSN.
  * Tunnel: dev → /api/monitoring (Vite proxy); prod → {VITE_API_BASE_URL}/api/monitoring (ad-block bypass).
+ * `shouldCreateSpanForRequest` keeps tracing noise low while still measuring API and absolute-backend calls.
  */
 import * as Sentry from '@sentry/react'
 import { getApiBaseUrl } from '@/lib/api-base'

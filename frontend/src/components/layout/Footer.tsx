@@ -1,5 +1,6 @@
 /**
  * Global site footer — fixed copy; year updates at build/runtime via `Date`.
+ * Lives inside `RootLayout` so every route shares the same legal/branding strip without duplicating markup.
  */
 export function Footer() {
   return (

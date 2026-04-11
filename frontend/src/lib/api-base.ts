@@ -5,6 +5,8 @@
  *   so requests stay same-origin: `fetch('/api/providers')` works.
  * - **Production (Vercel static):** set `VITE_API_BASE_URL` to your deployed FastAPI origin, e.g.
  *   `https://api.yourdomain.com` (no trailing slash). Builds bake this into the client bundle.
+ *
+ * Teaching note: always route network calls through `apiUrl()` in this repo so one env flip retargets every feature (TTS, health, Sentry tunnel).
  */
 export function getApiBaseUrl(): string {
   const raw = import.meta.env.VITE_API_BASE_URL

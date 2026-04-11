@@ -2,6 +2,12 @@
  * AI Blog Reader — main tool UI (routed at `/app`).
  * Features: multi-provider TTS, pipeline mode with SSE stepper,
  * provider health indicators, dynamic voices, conversion history.
+ *
+ * Walkthrough for readers of this file:
+ * - Bootstrap: `useEffect` loads GET `/api/providers` + `/api/provider-health`; voices refresh when `selectedProvider` changes (GET `/api/voices/{id}`).
+ * - Simple mode: `handleConvert` builds `FormData` → POST `/api/convert` → `blob()` URL for `<audio>` + download.
+ * - Pipeline mode: `handlePipelineConvert` POSTs `/api/convert-pipeline`, then reads `response.body` via `getReader()`, splits on newlines, parses each `data: {json}` SSE payload to update `pipelineSteps`.
+ * - History: `loadHistory` / `saveHistory` persist `tts_history` in `localStorage` (max 20 items) for quick replay.
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -94,6 +100,7 @@ const fieldSurface =
 const tabPanelSurface =
   "glow-panel glow-panel-hover mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/95 p-4 shadow-inner dark:border-white/10 dark:bg-slate-950/55";
 
+// --- Types below mirror FastAPI `TTS_PROVIDERS` + error payloads (see `main.py`) so the UI stays in sync with the API. ---
 interface TTSProvider {
   name: string;
   description: string;
@@ -186,6 +193,7 @@ const BADGE_COLORS: Record<string, string> = {
   blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-300",
 };
 
+// Labels must stay aligned with backend `PIPELINE_AGENTS` agent names for SSE `agent_start` / `agent_done` keys.
 const PIPELINE_AGENTS = [
   "Extractor",
   "Analyzer",
@@ -215,15 +223,18 @@ function loadHistory(): HistoryItem[] {
   try {
     return JSON.parse(localStorage.getItem("tts_history") || "[]");
   } catch {
+    // Corrupt JSON (manual edits) should never brick the page — reset to empty history.
     return [];
   }
 }
 
 function saveHistory(items: HistoryItem[]) {
+  // Cap at 20 so localStorage stays small; trim happens on every successful generation enqueue.
   localStorage.setItem("tts_history", JSON.stringify(items.slice(0, 20)));
 }
 
 export function ReaderPage() {
+  // --- React state partition (find related logic by searching these setters): providers/voices, text/url, audio blob, pipeline stepper, toasts. ---
   const [providers, setProviders] = useState<Providers>({});
   const [health, setHealth] = useState<ProviderHealth>({});
   const [selectedProvider, setSelectedProvider] = useState("edge-tts");
@@ -521,6 +532,7 @@ export function ReaderPage() {
     });
   }, []);
 
+  // URL → readable plaintext via FastAPI + BeautifulSoup (`POST /api/extract-text`); result fills the Text tab.
   const extractTextFromUrl = async () => {
     if (!url.trim()) {
       setError({
@@ -583,6 +595,7 @@ export function ReaderPage() {
     }
   };
 
+  // Simple mode: one POST returns the final MP3 bytes (no streaming progress).
   const handleConvert = async () => {
     if (!text.trim()) {
       setError({
@@ -678,6 +691,7 @@ export function ReaderPage() {
     }
   };
 
+  // Pipeline: server streams JSON lines prefixed with `data: ` (SSE). We parse incrementally for live UI updates.
   const handlePipelineConvert = async () => {
     const initSteps: Record<
       string,

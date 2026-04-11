@@ -1,6 +1,7 @@
 /**
  * Vite config: React + Tailwind, @ alias for src/, and dev proxy so /api/* goes to backend on :8000.
  * In production (Vercel) /api must be rewrites or VITE_API_BASE_URL to point at Coolify backend.
+ * `define.__SENTRY_RELEASE__` injects the Git SHA on Vercel so Sentry events group per deploy.
  */
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'

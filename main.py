@@ -2,6 +2,14 @@
 Blog-to-Audio API — FastAPI backend.
 Multi-provider TTS with multi-agent pipeline, text chunking,
 provider health checks, and dynamic voice loading.
+
+Educational reading order (walk the file top → bottom):
+1) `TTS_PROVIDERS` + voice tables — single source of truth the React app consumes via GET /api/providers.
+2) `extract_text_from_url` / `estimate_duration` / `_split_into_chunks` — blog → clean text → sized chunks for long jobs.
+3) `text_to_audio_*` — one function per vendor; each maps library errors to structured HTTPException payloads for the UI.
+4) `PipelineAgent` subclasses + `PIPELINE_AGENTS` — synchronous stages except `SynthesizerAgent.process_async` (I/O-heavy TTS).
+5) Routes under “API Endpoints” — REST JSON, binary MP3 responses, SSE streams, optional Sentry tunnel POST.
+6) Final `StaticFiles` mount — optional single-container deploy: serve `frontend/dist` from the same uvicorn process.
 """
 import json
 import re
@@ -25,16 +33,20 @@ import aiofiles
 from dotenv import load_dotenv
 
 _ROOT = Path(__file__).resolve().parent
+# Loads `.env` beside this file so uvicorn can be started from any cwd and still pick up keys.
 load_dotenv(_ROOT / ".env")
 
 
 def _resolved_api_key(form_value: Optional[str], env_name: str) -> Optional[str]:
+    # Browser may POST an api_key per request; otherwise fall back to server-side env (never logged here).
     raw = (form_value or os.getenv(env_name) or "").strip()
     return raw or None
 
 
+# FastAPI application; interactive OpenAPI lives at /docs when this process is reachable.
 app = FastAPI(title="Blog to Audio API")
 
+# When CORS_ORIGINS is unset, allow "*" for frictionless local dev; set explicit origins in production (see README).
 _cors_env = (os.getenv("CORS_ORIGINS") or "").strip()
 if _cors_env:
     _cors_list = [o.strip() for o in _cors_env.split(",") if o.strip()]
@@ -49,6 +61,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ephemeral MP3 workspace for both simple (`audio_*.mp3`) and pipeline (`pipeline_*.mp3`, chunk_*) outputs.
 AUDIO_DIR = "audio_files"
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
@@ -83,6 +96,7 @@ def get_friendly_error(status_code: int, provider: str, raw_error: str = "") -> 
 
 
 # ============== Provider Voice Configs ==============
+# Static fallbacks + labels; Edge also refreshes live voices in /api/voices/edge-tts via edge_tts.list_voices().
 
 EDGE_TTS_VOICES = {
     "en-US-AriaNeural": "Aria (Female, US)",
@@ -165,6 +179,7 @@ PROVIDER_STATUS = {
 }
 
 # ============== TTS_PROVIDERS (single source of truth for frontend) ==============
+# Merged with PROVIDER_STATUS for badges/notes; GET /api/providers returns this dict verbatim for the SPA.
 
 TTS_PROVIDERS = {
     "edge-tts": {
@@ -240,6 +255,7 @@ TTS_PROVIDERS = {
 # ============== Helper Functions ==============
 
 def extract_text_from_url(url: str) -> str:
+    # Heuristic article extraction: strip chrome tags, prefer article/main, gather headings/paragraphs in order.
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
     response = requests.get(url, timeout=15, headers=headers)
     response.raise_for_status()
@@ -296,6 +312,7 @@ def extract_text_from_url(url: str) -> str:
 
 
 def estimate_duration(text: str, speed: float = 1.0) -> dict:
+    # Rough WPM-based guess for UI previews (not billing-accurate for paid APIs).
     words = len(text.split())
     chars = len(text)
     duration_seconds = int((words / (150 * speed)) * 60)
@@ -304,6 +321,7 @@ def estimate_duration(text: str, speed: float = 1.0) -> dict:
 
 def _split_into_chunks(text: str, max_chars: int) -> list[str]:
     """Split text at sentence boundaries respecting max_chars per chunk."""
+    # Used by pipeline preprocessor + any path that must respect per-provider char ceilings.
     if len(text) <= max_chars:
         return [text]
     sentences = re.split(r'(?<=[.!?])\s+', text)
@@ -328,6 +346,7 @@ def _split_into_chunks(text: str, max_chars: int) -> list[str]:
 
 def _concat_audio_files(paths: list[str], output_path: str, silence_ms: int = 400):
     """Concatenate MP3 files with optional silence between them."""
+    # pydub path is best-effort; raw byte concat fallback keeps pipeline from hard-failing if ffmpeg missing.
     try:
         from pydub import AudioSegment
         combined = AudioSegment.empty()
@@ -346,6 +365,7 @@ def _concat_audio_files(paths: list[str], output_path: str, silence_ms: int = 40
 
 
 # ============== TTS Implementations ==============
+# Each entry point writes a single MP3 path; callers decide simple vs chunked orchestration.
 
 async def text_to_audio_edge(text: str, output_path: str, voice: str = "en-US-AriaNeural", speed: float = 1.0):
     try:
@@ -559,6 +579,7 @@ def text_to_audio_replicate(text: str, output_path: str, model: str = "adirik/st
 
 
 # ============== Multi-Agent Pipeline ==============
+# Educational model: each agent mutates a shared ctx dict; SSE mirrors agent_start/agent_done for the React stepper.
 
 class PipelineAgent:
     """Base class for pipeline agents."""
@@ -704,6 +725,7 @@ class AssemblerAgent(PipelineAgent):
         return ctx
 
 
+# Order matters: Extractor → … → Assembler; matches the string list on the frontend pipeline UI.
 PIPELINE_AGENTS = [
     ExtractorAgent(),
     AnalyzerAgent(),
@@ -767,6 +789,7 @@ def _sentry_forward_sync(envelope_url: str, body: bytes, content_type: Optional[
 
 
 async def run_pipeline(ctx: dict) -> dict:
+    # Async variant used where needed; mirrors convert_pipeline inner loop but returns final ctx only.
     for agent in PIPELINE_AGENTS:
         ctx["current_agent"] = agent.name
         start = time.time()
@@ -786,6 +809,7 @@ async def run_pipeline(ctx: dict) -> dict:
 @app.post("/api/monitoring")
 async def sentry_tunnel_ingest(request: Request):
     """Proxy Sentry envelopes to ingest (browser tunnel; ad-block bypass)."""
+    # Security: `_sentry_parse_tunnel_envelope` enforces DSN host + allowlisted numeric project ids from env.
     raw = await request.body()
     host, project_id, body = _sentry_parse_tunnel_envelope(raw)
     envelope_url = f"https://{host}/api/{project_id}/envelope/"
@@ -801,12 +825,14 @@ async def sentry_tunnel_ingest(request: Request):
 
 @app.get("/api/providers")
 async def get_providers():
+    # Consumed by ReaderPage on mount — drives provider cards, defaults, and which inputs (API key, speed) show.
     return TTS_PROVIDERS
 
 
 @app.get("/api/provider-health")
 async def provider_health():
     """Returns status for each provider (green/yellow/red)."""
+    # Derived entirely from static PROVIDER_STATUS — fast, cache-friendly, good for dashboards.
     health = {}
     for pid, pconf in TTS_PROVIDERS.items():
         st = pconf.get("status", "unknown")
@@ -826,6 +852,7 @@ async def provider_health():
 @app.get("/api/voices/{provider}")
 async def get_voices(provider: str, api_key: Optional[str] = Query(None)):
     """Dynamic voice loading per provider."""
+    # Edge hits Microsoft list live; ElevenLabs merges env/pasted key; others return curated dicts from this file.
     if provider == "edge-tts":
         try:
             voices = await edge_tts.list_voices()
@@ -905,6 +932,7 @@ async def convert(
     speed: float = Form(1.0),
     tts_model: Optional[str] = Form(None),
 ):
+    # “Simple mode”: one-shot synthesis; returns FileResponse MP3 (browser uses blob URL).
     if provider not in TTS_PROVIDERS:
         raise HTTPException(status_code=400, detail={"error": True, "title": "Invalid Provider", "message": f"Provider '{provider}' not supported.", "suggestion": "Select a valid provider."})
 
@@ -954,6 +982,7 @@ async def convert_pipeline(
     tts_model: Optional[str] = Form(None),
 ):
     """Multi-agent pipeline: returns SSE stream with progress, then final audio URL."""
+    # “Pipeline mode”: same TTS engines as simple mode, but stages + chunking run with streamed progress events.
     if not text and not url:
         raise HTTPException(status_code=400, detail={"error": True, "title": "No Input", "message": "Provide text or URL.", "suggestion": "Enter text or a blog URL."})
 
@@ -981,6 +1010,7 @@ async def convert_pipeline(
     }
 
     async def event_stream():
+        # text/event-stream: each `data:` line is one JSON object the frontend parses (see ReaderPage stream loop).
         try:
             for agent in PIPELINE_AGENTS:
                 ctx["current_agent"] = agent.name
@@ -1013,6 +1043,7 @@ async def convert_pipeline(
 @app.get("/api/audio/{file_id}")
 async def get_audio(file_id: str):
     """Serve generated audio by file ID (used by pipeline SSE)."""
+    # Accepts ids from either naming scheme so simple + pipeline downloads share one route.
     output_path = os.path.join(AUDIO_DIR, f"pipeline_{file_id}.mp3")
     if not os.path.exists(output_path):
         output_path = os.path.join(AUDIO_DIR, f"audio_{file_id}.mp3")
@@ -1039,5 +1070,6 @@ async def health_check():
     return {"status": "ok", "providers": len(TTS_PROVIDERS), "working": sum(1 for p in PROVIDER_STATUS.values() if p["status"] in ("working", "partial"))}
 
 
+# Optional: bake the Vite build into the API container so one URL serves SPA + /api (see Dockerfile / docs).
 if os.path.exists("frontend/dist"):
     app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")

@@ -1,3 +1,7 @@
+/**
+ * Custom `<audio>` chrome + optional frequency visualizer (Web Audio API).
+ * When `reducedMotion` is true we skip analyser wiring — same UX, less GPU + respects accessibility prefs.
+ */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
