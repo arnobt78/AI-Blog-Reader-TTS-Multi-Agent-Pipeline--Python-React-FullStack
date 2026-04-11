@@ -7,9 +7,14 @@
  * - Bootstrap: `useEffect` loads GET `/api/providers` + `/api/provider-health`; voices refresh when `selectedProvider` changes (GET `/api/voices/{id}`).
  * - Simple mode: `handleConvert` builds `FormData` → POST `/api/convert` → `blob()` URL for `<audio>` + download.
  * - Pipeline mode: `handlePipelineConvert` POSTs `/api/convert-pipeline`, then reads `response.body` via `getReader()`, splits on newlines, parses each `data: {json}` SSE payload to update `pipelineSteps`.
- * - History: `loadHistory` / `saveHistory` persist `tts_history` in `localStorage` (max 20 items) for quick replay.
+ * - History: metadata in `localStorage` (`tts_history`, max 20); audio bytes in IndexedDB (`historyAudioDb`) keyed by `HistoryItem.id`; `saveHistory` omits `audioUrl` from JSON.
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import {
+  deleteHistoryAudio,
+  getHistoryAudio,
+  putHistoryAudio,
+} from "@/lib/historyAudioDb";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { PageBackground } from "@/components/layout/PageBackground";
@@ -230,7 +235,12 @@ function loadHistory(): HistoryItem[] {
 
 function saveHistory(items: HistoryItem[]) {
   // Cap at 20 so localStorage stays small; trim happens on every successful generation enqueue.
-  localStorage.setItem("tts_history", JSON.stringify(items.slice(0, 20)));
+  const serial = items.slice(0, 20).map((h) => {
+    const row = { ...h };
+    delete row.audioUrl;
+    return row;
+  });
+  localStorage.setItem("tts_history", JSON.stringify(serial));
 }
 
 export function ReaderPage() {
@@ -338,6 +348,39 @@ export function ReaderPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    const urlsMade: string[] = [];
+    void (async () => {
+      const raw = loadHistory();
+      const next: HistoryItem[] = [];
+      for (const item of raw) {
+        const blob = await getHistoryAudio(item.id);
+        if (cancelled) {
+          urlsMade.forEach((u) => URL.revokeObjectURL(u));
+          return;
+        }
+        if (blob) {
+          if (item.audioUrl?.startsWith("blob:"))
+            URL.revokeObjectURL(item.audioUrl);
+          const audioUrl = URL.createObjectURL(blob);
+          urlsMade.push(audioUrl);
+          next.push({ ...item, audioUrl });
+        } else {
+          next.push({ ...item });
+        }
+      }
+      if (cancelled) {
+        urlsMade.forEach((u) => URL.revokeObjectURL(u));
+        return;
+      }
+      setHistory(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     fetch(apiUrl("/api/providers"))
       .then((res) => res.json())
       .then((data) => {
@@ -414,17 +457,31 @@ export function ReaderPage() {
   ]);
 
   const addToHistory = useCallback(
-    (audioUrl: string) => {
+    async (audioBlob: Blob) => {
+      const id = Date.now().toString();
+      const ts = Date.now();
+      try {
+        await putHistoryAudio(id, audioBlob);
+      } catch (e) {
+        console.error(e);
+      }
+      const audioUrl = URL.createObjectURL(audioBlob);
       const item: HistoryItem = {
-        id: Date.now().toString(),
-        timestamp: Date.now(),
+        id,
+        timestamp: ts,
         provider: selectedProvider,
         voice: selectedVoice,
         speed,
         textPreview: text.slice(0, 64) + (text.length > 64 ? "…" : ""),
         audioUrl,
       };
-      const updated = [item, ...history].slice(0, 20);
+      const merged = [item, ...history];
+      const evicted = merged.slice(20);
+      const updated = merged.slice(0, 20);
+      for (const e of evicted) {
+        if (e.audioUrl?.startsWith("blob:")) URL.revokeObjectURL(e.audioUrl);
+        void deleteHistoryAudio(e.id).catch(() => {});
+      }
       setHistory(updated);
       saveHistory(updated);
     },
@@ -512,6 +569,7 @@ export function ReaderPage() {
       saveHistory(next);
       return next;
     });
+    void deleteHistoryAudio(removed.id).catch(() => {});
     if (removed.audioUrl && audioUrl === removed.audioUrl) {
       audioRef.current?.pause();
       setAudioUrl(null);
@@ -528,6 +586,7 @@ export function ReaderPage() {
     setHistory((prev) => {
       for (const h of prev) {
         if (h.audioUrl) URL.revokeObjectURL(h.audioUrl);
+        void deleteHistoryAudio(h.id).catch(() => {});
       }
       saveHistory([]);
       return [];
@@ -669,7 +728,7 @@ export function ReaderPage() {
       const blob = await response.blob();
       const urlBlob = URL.createObjectURL(blob);
       setAudioUrl(urlBlob);
-      addToHistory(urlBlob);
+      await addToHistory(blob);
       const tid = genToastIdRef.current;
       if (tid != null) {
         toast.success("Audio ready (simple mode)", {
@@ -801,7 +860,7 @@ export function ReaderPage() {
               const blob = await audioResp.blob();
               const urlBlob = URL.createObjectURL(blob);
               setAudioUrl(urlBlob);
-              addToHistory(urlBlob);
+              await addToHistory(blob);
               const tid = genToastIdRef.current;
               if (tid != null) {
                 toast.success("Audio ready (pipeline)", {
