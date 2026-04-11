@@ -50,11 +50,11 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 
 
 def _audio_cleanup_expired_files() -> None:
-    raw_h = (os.getenv("AUDIO_CLEANUP_MAX_AGE_HOURS") or "12").strip()
+    raw_h = (os.getenv("AUDIO_CLEANUP_MAX_AGE_HOURS") or "3").strip()
     try:
         max_age_h = max(1.0, float(raw_h))
     except ValueError:
-        max_age_h = 12.0
+        max_age_h = 3.0
     cutoff = time.time() - max_age_h * 3600
     base = Path(AUDIO_DIR)
     if not base.is_dir():

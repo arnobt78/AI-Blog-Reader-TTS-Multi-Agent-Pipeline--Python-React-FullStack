@@ -555,7 +555,7 @@ export function ReaderPage() {
     toast.error("Could not play this audio", {
       id: "audio-playback-error",
       description:
-        "Blob links often break after a full page reload. Server files are removed after about 12 hours, so a 404 is expected—generate again. History rows stay in the list until you remove or clear them.",
+        "Blob links often break after a full page reload. Server files are removed after about 3 hours, so a 404 is expected—generate again. History rows stay in the list until you remove or clear them.",
       icon: <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />,
     });
   }, []);
@@ -1274,13 +1274,14 @@ export function ReaderPage() {
                       aria-hidden
                     />
                     <p>
-                      History stores temporary links in this browser
-                      (localStorage)—the list stays until you clear it or remove
-                      rows, so it does not empty by itself after 12 hours. In
-                      the same session, play usually works; after a full reload,
-                      blob links often stop working. Server-hosted clips are
-                      auto-deleted after about 12 hours—play may 404 and that is
-                      expected; generate again for a fresh file.
+                      History stores metadata in this browser (localStorage) and
+                      replay audio in IndexedDB—the list stays until you clear it
+                      or remove rows, and it does not empty when server-hosted
+                      clips expire (~3 hours). In the same session, play usually
+                      works; after a full reload, old blob-only links can break,
+                      but clips saved to IndexedDB should replay. Server-hosted
+                      clips are auto-deleted after about 3 hours—play may 404 and
+                      that is expected; generate again for a fresh file.
                     </p>
                   </div>
                   <div className="max-h-48 space-y-1.5 overflow-y-auto overflow-x-hidden pr-0.5 scrollbar-history">
