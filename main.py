@@ -6,10 +6,13 @@ provider health checks, and dynamic voice loading.
 import json
 import re
 import time
+from urllib.parse import urlparse
+
 import requests
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, Form, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uuid
@@ -712,6 +715,57 @@ PIPELINE_AGENTS = [
 ]
 
 
+def _sentry_tunnel_allowed_project_ids() -> set[str]:
+    raw = (os.getenv("SENTRY_TUNNEL_PROJECT_IDS") or "").strip()
+    if not raw:
+        return set()
+    return {x.strip() for x in raw.split(",") if x.strip()}
+
+
+def _sentry_hostname_allowed(hostname: str) -> bool:
+    h = (hostname or "").lower()
+    if not h.endswith(".sentry.io"):
+        return False
+    return ".ingest." in h
+
+
+def _sentry_parse_tunnel_envelope(raw: bytes) -> tuple[str, str, bytes]:
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty body")
+    nl = raw.find(b"\n")
+    if nl == -1:
+        raise HTTPException(status_code=400, detail="invalid envelope")
+    try:
+        meta = json.loads(raw[:nl].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="invalid envelope header")
+    dsn_str = meta.get("dsn")
+    if not dsn_str or not isinstance(dsn_str, str):
+        raise HTTPException(status_code=400, detail="missing dsn")
+    parsed = urlparse(dsn_str.strip())
+    if parsed.scheme not in ("https", "http") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="invalid dsn")
+    if not _sentry_hostname_allowed(parsed.hostname or ""):
+        raise HTTPException(status_code=400, detail="invalid dsn host")
+    path = (parsed.path or "").strip("/")
+    parts = [p for p in path.split("/") if p]
+    if len(parts) != 1 or not parts[0].isdigit():
+        raise HTTPException(status_code=400, detail="invalid dsn path")
+    project_id = parts[0]
+    allowed = _sentry_tunnel_allowed_project_ids()
+    if not allowed:
+        raise HTTPException(status_code=503, detail="Sentry tunnel not configured")
+    if project_id not in allowed:
+        raise HTTPException(status_code=403, detail="project not allowed")
+    host = parsed.hostname or ""
+    return host, project_id, raw
+
+
+def _sentry_forward_sync(envelope_url: str, body: bytes, content_type: Optional[str]) -> requests.Response:
+    headers = {"Content-Type": (content_type or "").strip() or "application/x-sentry-envelope"}
+    return requests.post(envelope_url, data=body, headers=headers, timeout=25)
+
+
 async def run_pipeline(ctx: dict) -> dict:
     for agent in PIPELINE_AGENTS:
         ctx["current_agent"] = agent.name
@@ -727,6 +781,23 @@ async def run_pipeline(ctx: dict) -> dict:
 
 
 # ============== API Endpoints ==============
+
+
+@app.post("/api/monitoring")
+async def sentry_tunnel_ingest(request: Request):
+    """Proxy Sentry envelopes to ingest (browser tunnel; ad-block bypass)."""
+    raw = await request.body()
+    host, project_id, body = _sentry_parse_tunnel_envelope(raw)
+    envelope_url = f"https://{host}/api/{project_id}/envelope/"
+    ct = request.headers.get("content-type")
+
+    def _call():
+        return _sentry_forward_sync(envelope_url, body, ct)
+
+    upstream = await run_in_threadpool(_call)
+    out_ct = upstream.headers.get("Content-Type", "application/json")
+    return Response(content=upstream.content, status_code=upstream.status_code, media_type=out_ct)
+
 
 @app.get("/api/providers")
 async def get_providers():

@@ -1,4 +1,5 @@
 /** App entry: mounts React root into #root and loads global CSS (Tailwind + theme variables). */
+import './sentry'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
