@@ -2,6 +2,7 @@
 # Frontend: Vercel (frontend/). Backend: repo root — Base directory ".", Dockerfile "./Dockerfile"
 # Coolify: PORT=3000, Ports Mappings e.g. 5005:3000, Traefik loadbalancer.server.port=3000
 # Local: docker run -p 8000:8000 -e PORT=8000 blog-to-audio-api
+# See docs/DOCKER_VPS_BACKEND_PLAYBOOK.md for lean-Docker checklist and VPS cleanup.
 
 FROM python:3.12-slim
 
@@ -20,7 +21,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
 
-RUN mkdir -p audio_files
+RUN mkdir -p audio_files \
+    && groupadd --system --gid 10001 appgroup \
+    && useradd --system --uid 10001 --gid appgroup --home-dir /app --no-create-home appuser \
+    && chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 3000
 

@@ -143,10 +143,10 @@ temp/
 # Cursor IDE (optional local state)
 .cursor/
 
-# Documentation
-HETZNER_VPS_MIGRATION_GUIDE.md
-SUBDOMAIN_ARNOBMAHMUD_SETUP.md
-DEPLOYMENT.md
+# Documentation (personal / infra-specific — not in public repo)
+docs/HETZNER_VPS_MIGRATION_GUIDE.md
+docs/SUBDOMAIN_ARNOBMAHMUD_SETUP.md
+
 
 .vercel
 dist
